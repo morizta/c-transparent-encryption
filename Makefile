@@ -60,21 +60,19 @@ $(BIN_DIR)/$(CLI_BINARY): cmd/takakrypt-cli/main.go $(shell find internal pkg -n
 cmd/takakrypt-cli/main.go:
 	@echo "Creating CLI placeholder..."
 	@mkdir -p cmd/takakrypt-cli
-	@cat > cmd/takakrypt-cli/main.go << 'EOF'
-package main
-
-import (
-	"fmt"
-	"os"
-)
-
-func main() {
-	fmt.Printf("Takakrypt CLI v%s\n", "$(VERSION)")
-	fmt.Println("CLI tool for managing Takakrypt transparent encryption")
-	fmt.Println("This is a placeholder - full implementation coming soon")
-	os.Exit(0)
-}
-EOF
+	@echo 'package main' > cmd/takakrypt-cli/main.go
+	@echo '' >> cmd/takakrypt-cli/main.go
+	@echo 'import (' >> cmd/takakrypt-cli/main.go
+	@echo '	"fmt"' >> cmd/takakrypt-cli/main.go
+	@echo '	"os"' >> cmd/takakrypt-cli/main.go
+	@echo ')' >> cmd/takakrypt-cli/main.go
+	@echo '' >> cmd/takakrypt-cli/main.go
+	@echo 'func main() {' >> cmd/takakrypt-cli/main.go
+	@echo '	fmt.Printf("Takakrypt CLI v$(VERSION)\\n")' >> cmd/takakrypt-cli/main.go
+	@echo '	fmt.Println("CLI tool for managing Takakrypt transparent encryption")' >> cmd/takakrypt-cli/main.go
+	@echo '	fmt.Println("This is a placeholder - full implementation coming soon")' >> cmd/takakrypt-cli/main.go
+	@echo '	os.Exit(0)' >> cmd/takakrypt-cli/main.go
+	@echo '}' >> cmd/takakrypt-cli/main.go
 
 # Clean build artifacts
 clean: clean-go clean-kernel
@@ -137,31 +135,28 @@ install-service: install-go
 		echo "Error: Installation requires root privileges"; \
 		exit 1; \
 	fi
-	@cat > $(INSTALL_SERVICE_DIR)/takakrypt-agent.service << 'EOF'
-[Unit]
-Description=Takakrypt Transparent Encryption Agent
-Documentation=man:takakrypt-agent(8)
-After=network.target
-
-[Service]
-Type=simple
-User=root
-Group=root
-ExecStart=$(INSTALL_SBIN_DIR)/$(AGENT_BINARY) -config $(INSTALL_ETC_DIR)/config.yaml
-ExecReload=/bin/kill -HUP $$MAINPID
-Restart=on-failure
-RestartSec=5
-PIDFile=$(INSTALL_RUN_DIR)/agent.pid
-
-# Security settings
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=$(INSTALL_VAR_DIR) $(INSTALL_LOG_DIR) $(INSTALL_RUN_DIR)
-
-[Install]
-WantedBy=multi-user.target
-EOF
+	@echo '[Unit]' > $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'Description=Takakrypt Transparent Encryption Agent' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'Documentation=man:takakrypt-agent(8)' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'After=network.target' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo '' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo '[Service]' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'Type=simple' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'User=root' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'Group=root' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'ExecStart=$(INSTALL_SBIN_DIR)/$(AGENT_BINARY) -config $(INSTALL_ETC_DIR)/config.yaml' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'ExecReload=/bin/kill -HUP $$$$MAINPID' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'Restart=on-failure' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'RestartSec=5' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'PIDFile=$(INSTALL_RUN_DIR)/agent.pid' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo '' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'NoNewPrivileges=true' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'ProtectSystem=strict' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'ProtectHome=true' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'ReadWritePaths=$(INSTALL_VAR_DIR) $(INSTALL_LOG_DIR) $(INSTALL_RUN_DIR)' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo '' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo '[Install]' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
+	@echo 'WantedBy=multi-user.target' >> $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
 	chmod 644 $(INSTALL_SERVICE_DIR)/takakrypt-agent.service
 	systemctl daemon-reload
 
