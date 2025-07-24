@@ -1,9 +1,9 @@
 #include "takakrypt.h"
 
 /* Forward declarations */
-static static void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_header, uint32_t pid);
-static static void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, void *payload);
-static static void takakrypt_handle_health_check(struct takakrypt_msg_header *msg_header, uint32_t pid);
+static void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_header, uint32_t pid);
+static void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, void *payload);
+static void takakrypt_handle_health_check(struct takakrypt_msg_header *msg_header, uint32_t pid);
 
 /* Netlink socket for kernel-userspace communication */
 static struct sock *takakrypt_nl_sock = NULL;
