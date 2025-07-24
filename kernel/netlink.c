@@ -1,5 +1,10 @@
 #include "takakrypt.h"
 
+/* Forward declarations */
+static static void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_header, uint32_t pid);
+static static void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, void *payload);
+static static void takakrypt_handle_health_check(struct takakrypt_msg_header *msg_header, uint32_t pid);
+
 /* Netlink socket for kernel-userspace communication */
 static struct sock *takakrypt_nl_sock = NULL;
 static DEFINE_MUTEX(netlink_mutex);
@@ -418,7 +423,7 @@ int takakrypt_send_policy_request(struct takakrypt_context *context,
  * @msg_header: Message header
  * @pid: Process ID of requester
  */
-void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_header, uint32_t pid)
+static void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_header, uint32_t pid)
 {
     struct {
         struct takakrypt_msg_header header;
@@ -451,7 +456,7 @@ void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_header, ui
  * @msg_header: Message header
  * @payload: Configuration data
  */
-void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, void *payload)
+static void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, void *payload)
 {
     struct takakrypt_config *new_config;
     
@@ -478,7 +483,7 @@ void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, voi
  * @msg_header: Message header
  * @pid: Process ID of requester
  */
-void takakrypt_handle_health_check(struct takakrypt_msg_header *msg_header, uint32_t pid)
+static void takakrypt_handle_health_check(struct takakrypt_msg_header *msg_header, uint32_t pid)
 {
     struct takakrypt_msg_header response;
     
