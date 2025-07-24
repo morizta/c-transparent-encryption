@@ -8,7 +8,7 @@ AUTHOR := Takakrypt Development Team
 GO_VERSION := 1.21
 GOOS := $(shell go env GOOS)
 GOARCH := $(shell go env GOARCH)
-GO_BUILD_FLAGS := -ldflags "-X main.version=$(VERSION) -X main.buildTime=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)"
+GO_BUILD_FLAGS := -ldflags "-s -w"
 
 # Build directories
 BUILD_DIR := build
