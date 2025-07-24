@@ -1,0 +1,226 @@
+# Takakrypt Transparent Encryption Configuration
+# Example configuration file showing all available options
+
+# Guard Points - Define protected directories and files
+guard_points:
+  - name: "sensitive_documents"
+    path: "/home/*/Documents/Confidential"
+    recursive: true
+    policy: "document_encryption"
+    include_patterns:
+      - "*.doc"
+      - "*.docx"
+      - "*.pdf"
+      - "*.xls"
+      - "*.xlsx"
+    exclude_patterns:
+      - "*.tmp"
+      - ".DS_Store"
+      - "Thumbs.db"
+    enabled: true
+
+  - name: "database_files"
+    path: "/var/lib/database"
+    recursive: true
+    policy: "database_encryption"
+    process_whitelist:
+      - "mysqld"
+      - "postgres"
+      - "mongod"
+    enabled: true
+
+  - name: "source_code"
+    path: "/opt/projects"
+    recursive: true
+    policy: "source_encryption"
+    include_patterns:
+      - "*.go"
+      - "*.c"
+      - "*.cpp"
+      - "*.h"
+      - "*.py"
+      - "*.js"
+    enabled: true
+
+# Encryption Policies
+policies:
+  document_encryption:
+    name: "Document Encryption Policy"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    user_sets:
+      - "finance_team"
+      - "executives"
+    process_sets:
+      - "office_applications"
+    resource_sets:
+      - "office_documents"
+    require_all_sets: false
+    key_rotation_interval: "24h"
+    audit_level: "info"
+    enabled: true
+
+  database_encryption:
+    name: "Database Encryption Policy"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    process_sets:
+      - "database_engines"
+    user_sets:
+      - "database_admins"
+    require_all_sets: true
+    key_rotation_interval: "12h"
+    audit_level: "debug"
+    enabled: true
+
+  source_encryption:
+    name: "Source Code Encryption Policy"
+    algorithm: "ChaCha20-Poly1305"
+    key_size: 256
+    user_sets:
+      - "developers"
+      - "architects"
+    resource_sets:
+      - "source_files"
+    require_all_sets: false
+    key_rotation_interval: "48h"
+    audit_level: "info"
+    enabled: true
+
+# User Sets - Define groups of users
+user_sets:
+  finance_team:
+    name: "Finance Team"
+    users:
+      - "john.doe"
+      - "jane.smith"
+      - "bob.wilson"
+    groups:
+      - "finance"
+      - "accounting"
+    description: "Finance department users"
+
+  executives:
+    name: "Executive Team"
+    users:
+      - "ceo"
+      - "cfo"
+      - "cto"
+    groups:
+      - "executives"
+    description: "C-level executives"
+
+  developers:
+    name: "Development Team"
+    groups:
+      - "developers"
+      - "engineers"
+    description: "Software development team"
+
+  architects:
+    name: "System Architects"
+    users:
+      - "lead.architect"
+      - "senior.architect"
+    description: "System and software architects"
+
+  database_admins:
+    name: "Database Administrators"
+    users:
+      - "dba.admin"
+      - "db.manager"
+    groups:
+      - "dba"
+    description: "Database administrators"
+
+# Process Sets - Define groups of processes
+process_sets:
+  office_applications:
+    name: "Office Applications"
+    processes:
+      - "word.exe"
+      - "excel.exe"
+      - "powerpoint.exe"
+      - "acrobat.exe"
+      - "libreoffice"
+    process_paths:
+      - "/usr/bin/libreoffice*"
+      - "/Applications/Microsoft*.app"
+    description: "Office productivity applications"
+
+  database_engines:
+    name: "Database Engines"
+    processes:
+      - "mysqld"
+      - "postgres"
+      - "mongod"
+      - "oracle"
+      - "sqlservr.exe"
+    process_paths:
+      - "/usr/bin/mysql*"
+      - "/usr/bin/postgres*"
+    description: "Database server processes"
+
+# Resource Sets - Define groups of file resources
+resource_sets:
+  office_documents:
+    name: "Office Documents"
+    file_patterns:
+      - ".*\\.(doc|docx|xls|xlsx|ppt|pptx|pdf)$"
+    extensions:
+      - ".doc"
+      - ".docx"
+      - ".xls"
+      - ".xlsx"
+      - ".pdf"
+    mime_types:
+      - "application/pdf"
+      - "application/msword"
+      - "application/vnd.openxmlformats-officedocument"
+    description: "Microsoft Office and PDF documents"
+
+  source_files:
+    name: "Source Code Files"
+    file_patterns:
+      - ".*\\.(go|c|cpp|h|py|js|ts|java|cs)$"
+    extensions:
+      - ".go"
+      - ".c"
+      - ".cpp"
+      - ".h"
+      - ".py"
+      - ".js"
+      - ".ts"
+    directories:
+      - "/src"
+      - "/code"
+      - "/projects"
+    description: "Source code files"
+
+# KMS Configuration
+kms:
+  endpoint: "https://kms.company.com/api/v1"
+  auth_method: "certificate"
+  certificate_path: "/etc/takakrypt/client.crt"
+  key_path: "/etc/takakrypt/client.key"
+  timeout: "10s"
+  retry_attempts: 3
+  key_cache_ttl: "1h"
+  policy_cache_ttl: "15m"
+  headers:
+    X-Client-Version: "1.0.0"
+    X-Environment: "production"
+
+# Agent Configuration
+agent:
+  socket_path: "/var/run/takakrypt/agent.sock"
+  log_level: "info"
+  log_path: "/var/log/takakrypt/agent.log"
+  audit_log_path: "/var/log/takakrypt/audit.log"
+  max_cache_size: 1000
+  cache_cleanup_interval: "5m"
+  worker_threads: 4
+  max_request_size: 67108864  # 64MB
+  request_timeout: "30s"
+  enable_metrics: true
+  metrics_port: 9090
