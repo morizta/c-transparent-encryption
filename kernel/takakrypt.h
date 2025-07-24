@@ -212,9 +212,7 @@ struct takakrypt_state {
 
 /* Function prototypes */
 
-/* Module initialization and cleanup */
-int takakrypt_init_module(void);
-void takakrypt_cleanup_module(void);
+/* Module initialization and cleanup - declared in main.c */
 
 /* Netlink communication */
 int takakrypt_netlink_init(void);

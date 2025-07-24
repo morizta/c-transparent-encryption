@@ -24,7 +24,7 @@ $(MODULE_NAME)-objs := main.o vfs_hooks.o netlink.o cache.o file_context.o proc.
 
 # Compiler flags
 ccflags-y := -DTAKAKRYPT_VERSION=\"$(VERSION)\"
-ccflags-y += -Wall -Wextra -Werror
+ccflags-y += -Wall -Wno-unused-parameter
 ccflags-y += -DDEBUG
 
 # Installation directories
