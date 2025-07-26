@@ -162,14 +162,16 @@ func (e *Engine) findMatchingGuardPoint(evalCtx *EvaluationContext) *GuardPoint 
 
 		// Check include patterns
 		if len(gp.IncludeRegexps) > 0 {
-			if !e.matchesAnyPattern(evalCtx.FilePath, gp.IncludeRegexps) {
+			fileName := filepath.Base(evalCtx.FilePath)
+			if !e.matchesAnyPattern(fileName, gp.IncludeRegexps) {
 				continue
 			}
 		}
 
 		// Check exclude patterns
 		if len(gp.ExcludeRegexps) > 0 {
-			if e.matchesAnyPattern(evalCtx.FilePath, gp.ExcludeRegexps) {
+			fileName := filepath.Base(evalCtx.FilePath)
+			if e.matchesAnyPattern(fileName, gp.ExcludeRegexps) {
 				continue
 			}
 		}
@@ -186,9 +188,16 @@ func (e *Engine) pathMatches(filePath string, gp *GuardPoint) bool {
 		return gp.PathPattern.MatchString(filePath)
 	}
 
-	// Fallback to simple path matching
+	// Fallback to proper path matching
 	if gp.Recursive {
-		return strings.HasPrefix(filePath, gp.Path)
+		// Ensure the file path is under the guard point path
+		// Use filepath.Rel to check if the file is actually under the guard point
+		rel, err := filepath.Rel(gp.Path, filePath)
+		if err != nil {
+			return false
+		}
+		// File is under guard point if rel doesn't start with ".." and isn't absolute
+		return !filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, "../")
 	}
 	
 	return filepath.Dir(filePath) == gp.Path

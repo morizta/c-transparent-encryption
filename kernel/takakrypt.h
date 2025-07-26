@@ -232,11 +232,13 @@ struct takakrypt_cache_entry *takakrypt_cache_lookup(const char *filepath, uint3
 void takakrypt_cache_insert(const char *filepath, uint32_t uid, uint32_t pid, 
                            uint32_t allow, const char *policy_name, const char *key_id);
 void takakrypt_cache_cleanup(void);
+void takakrypt_cache_get_stats(uint32_t *total_entries, uint32_t *expired_entries);
 
 /* File context management */
 struct takakrypt_file_context *takakrypt_get_file_context(struct file *file);
 void takakrypt_put_file_context(struct takakrypt_file_context *ctx);
 void takakrypt_cleanup_file_contexts(void);
+void takakrypt_get_file_contexts_stats(uint32_t *total_files, uint32_t *encrypted_files);
 
 /* Utility functions */
 int takakrypt_get_file_path(struct file *file, char *buf, size_t buf_size);
@@ -286,6 +288,28 @@ extern uint32_t takakrypt_debug_level;
 #define TAKAKRYPT_CACHE_SIZE      (1 << TAKAKRYPT_CACHE_HASH_BITS)
 #define TAKAKRYPT_CACHE_TIMEOUT   (5 * 60 * HZ)  /* 5 minutes */
 #define TAKAKRYPT_REQUEST_TIMEOUT (30 * HZ)      /* 30 seconds */
+
+/* VFS hooks function declarations */
+ssize_t takakrypt_read_iter(struct kiocb *iocb, struct iov_iter *iter);
+ssize_t takakrypt_write_iter(struct kiocb *iocb, struct iov_iter *iter);
+int takakrypt_file_open(struct inode *inode, struct file *file);
+int takakrypt_file_release(struct inode *inode, struct file *file);
+
+/* Original file operations storage (external declaration) */
+extern const struct file_operations *original_file_ops;
+extern struct file_operations takakrypt_hooked_fops;
+
+/* Encryption/decryption functions */
+int takakrypt_encrypt_data(const char *data, size_t data_len, const char *key_id, char **encrypted_data);
+int takakrypt_decrypt_data(const char *encrypted_data, size_t data_len, const char *key_id, char **decrypted_data);
+int takakrypt_query_policy_for_encryption(struct file *file, struct takakrypt_file_context *ctx);
+
+/* VFS hook management */
+int takakrypt_install_file_hooks(struct file *file);
+void takakrypt_remove_file_hooks(struct file *file);
+int takakrypt_install_global_hooks(void);
+void takakrypt_remove_global_hooks(void);
+int takakrypt_should_intercept_file(struct file *file);
 
 /* Global state instance */
 extern struct takakrypt_state *takakrypt_global_state;

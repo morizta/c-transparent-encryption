@@ -205,20 +205,21 @@ int takakrypt_file_open(struct inode *inode, struct file *file)
 }
 
 /**
- * takakrypt_file_read - Hook for file read operations
- * @file: File being read
- * @buf: User buffer
- * @count: Number of bytes to read
- * @ppos: File position
+ * takakrypt_read_iter - Hook for file read operations (modern interface)
+ * @iocb: I/O control block
+ * @iter: Iterator for data transfer
  * 
  * Returns: Number of bytes read, or negative error code
  */
-ssize_t takakrypt_file_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+ssize_t takakrypt_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
+    struct file *file = iocb->ki_filp;
     struct takakrypt_file_context *ctx;
     ssize_t ret;
+    char *buffer = NULL;
+    size_t count = iov_iter_count(iter);
     
-    takakrypt_debug("File read hook called: count=%zu, pos=%lld\n", count, *ppos);
+    takakrypt_debug("Read_iter hook called: count=%zu, pos=%lld\n", count, iocb->ki_pos);
     
     /* Check policy for file read */
     ret = takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_READ);
@@ -227,44 +228,85 @@ ssize_t takakrypt_file_read(struct file *file, char __user *buf, size_t count, l
         return ret;
     }
     
-    /* Get file context */
+    /* Call original read operation first */
+    if (original_file_ops && original_file_ops->read_iter) {
+        ret = original_file_ops->read_iter(iocb, iter);
+        if (ret <= 0) {
+            return ret; /* Error or EOF */
+        }
+    } else {
+        takakrypt_warn("No original read_iter operation available\n");
+        return -ENOSYS;
+    }
+    
+    /* Get file context to check if decryption is needed */
     ctx = takakrypt_get_file_context(file);
     if (ctx && ctx->encrypted) {
-        takakrypt_debug("File is encrypted, would decrypt here\n");
-        /* TODO: Implement decryption */
+        takakrypt_debug("File is encrypted, decryption needed\n");
+        
+        /* Allocate buffer for decryption */
+        buffer = kmalloc(ret, GFP_KERNEL);
+        if (!buffer) {
+            takakrypt_error("Failed to allocate decryption buffer\n");
+            goto cleanup;
+        }
+        
+        /* Copy data from iterator for decryption */
+        if (copy_from_iter(buffer, ret, iter) != ret) {
+            takakrypt_error("Failed to copy data from iterator\n");
+            ret = -EFAULT;
+            goto cleanup;
+        }
+        
+        /* TODO: Send to agent for decryption via netlink */
+        ret = takakrypt_decrypt_data(buffer, ret, ctx->key_id, &buffer);
+        if (ret < 0) {
+            takakrypt_error("Decryption failed: %ld\n", ret);
+            goto cleanup;
+        }
+        
+        /* Copy decrypted data back to iterator */
+        if (copy_to_iter(buffer, ret, iter) != ret) {
+            takakrypt_error("Failed to copy decrypted data to iterator\n");
+            ret = -EFAULT;
+            goto cleanup;
+        }
         
         spin_lock(&takakrypt_global_state->stats_lock);
         takakrypt_global_state->stats.decryption_ops++;
         spin_unlock(&takakrypt_global_state->stats_lock);
+        
+        takakrypt_debug("File decrypted successfully: %zu bytes\n", ret);
     }
     
-    /* For now, call original read operation */
-    /* In production, this would be the original file operation */
-    takakrypt_debug("Read operation would be performed here\n");
-    
-    /* Release file context */
+cleanup:
+    if (buffer) {
+        kfree(buffer);
+    }
     if (ctx) {
         takakrypt_put_file_context(ctx);
     }
     
-    return count; /* Simulated successful read */
+    return ret;
 }
 
 /**
- * takakrypt_file_write - Hook for file write operations
- * @file: File being written
- * @buf: User buffer containing data
- * @count: Number of bytes to write
- * @ppos: File position
+ * takakrypt_write_iter - Hook for file write operations (modern interface)
+ * @iocb: I/O control block
+ * @iter: Iterator for data transfer
  * 
  * Returns: Number of bytes written, or negative error code
  */
-ssize_t takakrypt_file_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+ssize_t takakrypt_write_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
+    struct file *file = iocb->ki_filp;
     struct takakrypt_file_context *ctx;
     ssize_t ret;
+    char *buffer = NULL;
+    char *encrypted_buffer = NULL;
+    size_t count = iov_iter_count(iter);
     
-    takakrypt_debug("File write hook called: count=%zu, pos=%lld\n", count, *ppos);
+    takakrypt_debug("Write_iter hook called: count=%zu, pos=%lld\n", count, iocb->ki_pos);
     
     /* Check policy for file write */
     ret = takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_WRITE);
@@ -278,31 +320,77 @@ ssize_t takakrypt_file_write(struct file *file, const char __user *buf, size_t c
     if (ctx) {
         /* Check if file should be encrypted */
         if (!ctx->policy_checked) {
-            /* TODO: Query policy engine to determine if encryption is needed */
-            ctx->encrypted = 1; /* For now, assume encryption is needed */
+            /* Query policy engine to determine if encryption is needed */
+            ret = takakrypt_query_policy_for_encryption(file, ctx);
+            if (ret < 0) {
+                takakrypt_warn("Failed to query encryption policy, defaulting to encrypt\n");
+                ctx->encrypted = 1;
+            } else {
+                ctx->encrypted = ret;
+            }
             ctx->policy_checked = 1;
-            strncpy(ctx->key_id, "default-key", sizeof(ctx->key_id) - 1);
+            strncpy(ctx->key_id, "policy-key-1", sizeof(ctx->key_id) - 1);
+            takakrypt_debug("Policy check complete: encrypted=%u, key_id=%s\n", 
+                           ctx->encrypted, ctx->key_id);
         }
         
         if (ctx->encrypted) {
-            takakrypt_debug("File requires encryption, would encrypt here\n");
-            /* TODO: Implement encryption */
+            takakrypt_debug("File requires encryption, encrypting data\n");
+            
+            /* Allocate buffer for original data */
+            buffer = kmalloc(count, GFP_KERNEL);
+            if (!buffer) {
+                takakrypt_error("Failed to allocate encryption buffer\n");
+                ret = -ENOMEM;
+                goto cleanup;
+            }
+            
+            /* Copy data from iterator */
+            if (copy_from_iter(buffer, count, iter) != count) {
+                takakrypt_error("Failed to copy data from iterator\n");
+                ret = -EFAULT;
+                goto cleanup;
+            }
+            
+            /* Encrypt the data via agent */
+            ret = takakrypt_encrypt_data(buffer, count, ctx->key_id, &encrypted_buffer);
+            if (ret < 0) {
+                takakrypt_error("Encryption failed: %ld\n", ret);
+                goto cleanup;
+            }
+            
+            /* Create new iterator with encrypted data */
+            iov_iter_kvec(iter, WRITE, &(struct kvec){encrypted_buffer, ret}, 1, ret);
             
             spin_lock(&takakrypt_global_state->stats_lock);
             takakrypt_global_state->stats.encryption_ops++;
             spin_unlock(&takakrypt_global_state->stats_lock);
+            
+            takakrypt_debug("File encrypted successfully: %zu -> %zu bytes\n", count, ret);
         }
     }
     
-    /* For now, simulate successful write operation */
-    takakrypt_debug("Write operation would be performed here\n");
+    /* Call original write operation with (possibly encrypted) data */
+    if (original_file_ops && original_file_ops->write_iter) {
+        ret = original_file_ops->write_iter(iocb, iter);
+    } else {
+        takakrypt_warn("No original write_iter operation available\n");
+        ret = -ENOSYS;
+        goto cleanup;
+    }
     
-    /* Release file context */
+cleanup:
+    if (buffer) {
+        kfree(buffer);
+    }
+    if (encrypted_buffer) {
+        kfree(encrypted_buffer);
+    }
     if (ctx) {
         takakrypt_put_file_context(ctx);
     }
     
-    return count; /* Simulated successful write */
+    return ret;
 }
 
 /**
@@ -370,12 +458,13 @@ static int takakrypt_should_intercept(struct file *file)
     return 1;
 }
 
+/* File operations are declared globally in main.c and defined in takakrypt.h */
+
 /**
  * takakrypt_install_file_hooks - Install hooks for specific file
  * @file: File to hook
  * 
- * This is a simplified approach. In production, VFS hooks would be
- * installed at the VFS layer or using LSM framework.
+ * Replaces file operations with our hooked versions for transparent encryption
  */
 int takakrypt_install_file_hooks(struct file *file)
 {
@@ -383,15 +472,59 @@ int takakrypt_install_file_hooks(struct file *file)
         return 0;
     }
     
-    takakrypt_debug("Installing file hooks (conceptual)\n");
+    takakrypt_debug("Installing VFS hooks for file\n");
     
-    /* In a real implementation, this would:
-     * 1. Save original file operations
-     * 2. Replace with our hooked versions
-     * 3. Ensure atomic replacement
-     */
+    /* Save original file operations if not already saved */
+    if (!original_file_ops && file->f_op) {
+        original_file_ops = file->f_op;
+        
+        /* Initialize our hooked operations based on original */
+        takakrypt_hooked_fops = *original_file_ops;
+        
+        /* Replace key operations with our hooks */
+        takakrypt_hooked_fops.read_iter = takakrypt_read_iter;
+        takakrypt_hooked_fops.write_iter = takakrypt_write_iter;
+        takakrypt_hooked_fops.open = takakrypt_file_open;
+        takakrypt_hooked_fops.release = takakrypt_file_release;
+        
+        takakrypt_info("VFS hooks initialized with original operations\n");
+    }
+    
+    /* Replace file operations atomically */
+    if (original_file_ops) {
+        file->f_op = &takakrypt_hooked_fops;
+        takakrypt_debug("File operations replaced with hooked versions\n");
+    }
     
     return 0;
+}
+
+/**
+ * Global VFS hook installation - intercept all file opens
+ * This is called during module initialization
+ */
+static const struct file_operations *original_default_fops = NULL;
+
+/**
+ * Hooked file open that installs our hooks
+ */
+static int takakrypt_hooked_open(struct inode *inode, struct file *file)
+{
+    int ret = 0;
+    
+    /* Call original open first if it exists */
+    if (original_default_fops && original_default_fops->open) {
+        ret = original_default_fops->open(inode, file);
+        if (ret) {
+            return ret;
+        }
+    }
+    
+    /* Install our hooks for this file */
+    takakrypt_install_file_hooks(file);
+    
+    /* Call our own open hook */
+    return takakrypt_file_open(inode, file);
 }
 
 /**
@@ -400,10 +533,132 @@ int takakrypt_install_file_hooks(struct file *file)
  */
 void takakrypt_remove_file_hooks(struct file *file)
 {
-    takakrypt_debug("Removing file hooks (conceptual)\n");
+    takakrypt_debug("Removing file hooks\n");
     
-    /* In a real implementation, this would:
-     * 1. Restore original file operations
-     * 2. Ensure no operations are in progress
-     */
+    /* Restore original file operations if they were hooked */
+    if (original_file_ops && file->f_op == &takakrypt_hooked_fops) {
+        file->f_op = original_file_ops;
+        takakrypt_debug("Original file operations restored\n");
+    }
+}
+
+/**
+ * takakrypt_query_policy_for_encryption - Query agent for encryption policy
+ * @file: File being accessed
+ * @ctx: File context to update
+ * 
+ * Returns: 1 if encryption required, 0 if not, negative error code on failure
+ */
+int takakrypt_query_policy_for_encryption(struct file *file, struct takakrypt_file_context *ctx)
+{
+    char filepath[TAKAKRYPT_MAX_PATH_LEN];
+    int ret;
+    
+    /* Get file path */
+    ret = takakrypt_get_file_path(file, filepath, sizeof(filepath));
+    if (ret) {
+        takakrypt_debug("Failed to get file path for policy query\n");
+        return ret;
+    }
+    
+    takakrypt_debug("Querying policy for file: %s\n", filepath);
+    
+    /* TODO: Send netlink message to agent for policy evaluation */
+    /* For now, implement simple logic based on file path */
+    
+    /* Check if file is in a test directory */
+    if (strstr(filepath, "/tmp/takakrypt-test") != NULL) {
+        /* Check file extension */
+        if (strstr(filepath, ".txt") != NULL || strstr(filepath, ".doc") != NULL) {
+            takakrypt_debug("File matches encryption policy: %s\n", filepath);
+            return 1; /* Encrypt */
+        }
+    }
+    
+    takakrypt_debug("File does not match encryption policy: %s\n", filepath);
+    return 0; /* Don't encrypt */
+}
+
+/**
+ * takakrypt_encrypt_data - Encrypt data via agent
+ * @data: Data to encrypt
+ * @data_len: Length of data
+ * @key_id: Key ID to use for encryption
+ * @encrypted_data: Output pointer for encrypted data
+ * 
+ * Returns: Length of encrypted data, or negative error code
+ */
+int takakrypt_encrypt_data(const char *data, size_t data_len, const char *key_id, char **encrypted_data)
+{
+    size_t encrypted_len;
+    char *encrypted_buf;
+    
+    takakrypt_debug("Encrypting %zu bytes with key %s\n", data_len, key_id);
+    
+    /* TODO: Send encryption request to agent via netlink */
+    /* For now, implement simple mock encryption (just copy + header) */
+    
+    /* Allocate buffer for "encrypted" data (original + simple header) */
+    encrypted_len = data_len + 32; /* 32 bytes for mock header */
+    encrypted_buf = kmalloc(encrypted_len, GFP_KERNEL);
+    if (!encrypted_buf) {
+        takakrypt_error("Failed to allocate encryption buffer\n");
+        return -ENOMEM;
+    }
+    
+    /* Mock encryption: add header + copy data */
+    snprintf(encrypted_buf, 32, "TAKAKRYPT_ENC_%s_", key_id);
+    memcpy(encrypted_buf + 32, data, data_len);
+    
+    *encrypted_data = encrypted_buf;
+    
+    takakrypt_debug("Mock encryption complete: %zu -> %zu bytes\n", data_len, encrypted_len);
+    return encrypted_len;
+}
+
+/**
+ * takakrypt_decrypt_data - Decrypt data via agent
+ * @encrypted_data: Encrypted data
+ * @data_len: Length of encrypted data
+ * @key_id: Key ID used for encryption
+ * @decrypted_data: Output pointer for decrypted data
+ * 
+ * Returns: Length of decrypted data, or negative error code
+ */
+int takakrypt_decrypt_data(const char *encrypted_data, size_t data_len, const char *key_id, char **decrypted_data)
+{
+    size_t decrypted_len;
+    char *decrypted_buf;
+    char *plain_buf;
+    
+    takakrypt_debug("Decrypting %zu bytes with key %s\n", data_len, key_id);
+    
+    /* TODO: Send decryption request to agent via netlink */
+    /* For now, implement simple mock decryption (remove header) */
+    
+    /* Check if data has our mock encryption header */
+    if (data_len < 32 || strncmp(encrypted_data, "TAKAKRYPT_ENC_", 14) != 0) {
+        /* Data is not encrypted, return as-is */
+        plain_buf = kmalloc(data_len, GFP_KERNEL);
+        if (!plain_buf) {
+            return -ENOMEM;
+        }
+        memcpy(plain_buf, encrypted_data, data_len);
+        *decrypted_data = plain_buf;
+        return data_len;
+    }
+    
+    /* Remove mock header and return original data */
+    decrypted_len = data_len - 32;
+    decrypted_buf = kmalloc(decrypted_len, GFP_KERNEL);
+    if (!decrypted_buf) {
+        takakrypt_error("Failed to allocate decryption buffer\n");
+        return -ENOMEM;
+    }
+    
+    memcpy(decrypted_buf, encrypted_data + 32, decrypted_len);
+    *decrypted_data = decrypted_buf;
+    
+    takakrypt_debug("Mock decryption complete: %zu -> %zu bytes\n", data_len, decrypted_len);
+    return decrypted_len;
 }

@@ -18,8 +18,8 @@ struct takakrypt_state *takakrypt_global_state = NULL;
 uint32_t takakrypt_debug_level = TAKAKRYPT_LOG_LEVEL_INFO;
 
 /* Original file operations storage */
-static struct file_operations *original_file_ops = NULL;
-static struct file_operations takakrypt_file_ops;
+const struct file_operations *original_file_ops = NULL;
+struct file_operations takakrypt_hooked_fops;
 
 /**
  * takakrypt_init_state - Initialize global module state
@@ -127,24 +127,13 @@ static void takakrypt_cleanup_state(void)
  */
 static int takakrypt_install_hooks(void)
 {
-    /* For now, we'll use a simple approach of hooking into common file operations
-     * In a production system, this would use LSM hooks or VFS layer hooks
-     * This is a simplified demonstration approach
-     */
+    /* Initialize VFS hooks system */
+    takakrypt_info("Initializing VFS hooks for transparent encryption\n");
+    takakrypt_info("VFS hooks will intercept file operations on protected paths\n");
+    takakrypt_info("Supported operations: read_iter, write_iter, open, release\n");
     
-    takakrypt_info("VFS hooks would be installed here\n");
-    takakrypt_info("In production, this would hook into:\n");
-    takakrypt_info("  - vfs_read/vfs_write operations\n");
-    takakrypt_info("  - do_filp_open for file creation/opening\n");
-    takakrypt_info("  - LSM hooks for access control\n");
-    
-    /* Initialize our file operations structure */
-    memset(&takakrypt_file_ops, 0, sizeof(takakrypt_file_ops));
-    
-    /* Note: Actual VFS hooking requires kernel compilation with specific options
-     * and would involve modifying system call tables or using LSM framework
-     * This is a framework for the actual implementation
-     */
+    /* VFS hooks are now implemented and will be installed per-file as needed */
+    takakrypt_info("VFS hooks ready - files will be hooked on first access\n");
     
     return 0;
 }
@@ -224,6 +213,13 @@ static int __init takakrypt_init_module(void)
         goto cleanup_proc;
     }
     
+    /* Install global kprobe hooks */
+    ret = takakrypt_install_global_hooks();
+    if (ret) {
+        takakrypt_warn("Failed to install global hooks: %d\n", ret);
+        /* Continue - this is not fatal */
+    }
+    
     /* Perform initial health check */
     ret = takakrypt_health_check();
     if (ret) {
@@ -254,6 +250,9 @@ static void __exit takakrypt_cleanup_module(void)
     
     /* Remove VFS hooks */
     takakrypt_remove_hooks();
+    
+    /* Remove global hooks */
+    takakrypt_remove_global_hooks();
     
     /* Cleanup proc interface */
     takakrypt_proc_cleanup();

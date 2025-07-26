@@ -20,7 +20,7 @@ PWD := $(shell pwd)
 
 # Source files
 obj-m := $(MODULE_NAME).o
-$(MODULE_NAME)-objs := main.o vfs_hooks.o netlink.o cache.o file_context.o proc.o
+$(MODULE_NAME)-objs := main.o vfs_hooks.o kprobe_hooks.o netlink.o cache.o file_context.o proc.o
 
 # Compiler flags
 ccflags-y := -DTAKAKRYPT_VERSION=\"$(VERSION)\"

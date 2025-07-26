@@ -59,9 +59,9 @@ static int takakrypt_proc_status_show(struct seq_file *m, void *v)
     seq_printf(m, "  Total Processed: %llu\n", stats.requests_processed);
     seq_printf(m, "  Allowed: %llu\n", stats.requests_allowed);
     seq_printf(m, "  Denied: %llu\n", stats.requests_denied);
-    seq_printf(m, "  Denial Rate: %.2f%%\n", 
+    seq_printf(m, "  Denial Rate: %llu%%\n", 
                stats.requests_processed > 0 ? 
-               (double)stats.requests_denied * 100.0 / stats.requests_processed : 0.0);
+               (stats.requests_denied * 100) / stats.requests_processed : 0);
     seq_printf(m, "\n");
     
     seq_printf(m, "Cryptographic Operations:\n");
@@ -73,9 +73,9 @@ static int takakrypt_proc_status_show(struct seq_file *m, void *v)
     seq_printf(m, "Cache Performance:\n");
     seq_printf(m, "  Cache Hits: %llu\n", stats.cache_hits);
     seq_printf(m, "  Cache Misses: %llu\n", stats.cache_misses);
-    seq_printf(m, "  Hit Rate: %.2f%%\n",
+    seq_printf(m, "  Hit Rate: %llu%%\n",
                (stats.cache_hits + stats.cache_misses) > 0 ?
-               (double)stats.cache_hits * 100.0 / (stats.cache_hits + stats.cache_misses) : 0.0);
+               (stats.cache_hits * 100) / (stats.cache_hits + stats.cache_misses) : 0);
     seq_printf(m, "  Cached Entries: %u\n", total_cache);
     seq_printf(m, "  Expired Entries: %u\n", expired_cache);
     seq_printf(m, "\n");
@@ -184,8 +184,8 @@ static int takakrypt_proc_cache_show(struct seq_file *m, void *v)
     seq_printf(m, "  Total Entries: %u\n", total_entries);
     seq_printf(m, "  Expired Entries: %u\n", expired_entries);
     seq_printf(m, "  Cache Size: %u buckets\n", TAKAKRYPT_CACHE_SIZE);
-    seq_printf(m, "  Load Factor: %.2f%%\n", 
-               (double)total_entries * 100.0 / TAKAKRYPT_CACHE_SIZE);
+    seq_printf(m, "  Load Factor: %u%%\n", 
+               (total_entries * 100) / TAKAKRYPT_CACHE_SIZE);
     seq_printf(m, "\n");
     
     seq_printf(m, "Cache Entries:\n");
