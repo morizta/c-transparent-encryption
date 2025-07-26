@@ -358,3 +358,192 @@ This analysis reveals Thales CTE as a sophisticated transparent encryption solut
 5. **Configuration Issues**: Authentication and policy configuration problems affecting database access
 
 The system demonstrates the complexity required for enterprise-grade transparent encryption and provides a detailed blueprint for implementing similar capabilities.
+
+---
+
+## 11. CipherTrust Manager (CM) Web Interface Analysis
+
+### 11.1 Policy Management Architecture
+From comprehensive analysis of 16 CM web interface screenshots, the following enterprise policy management structure was extracted:
+
+#### Policy Types and Versioning
+```
+CTE Policies:
+├── Live Data Transformation (LDT)    # Real encryption policies
+│   ├── demo_policy (v30, key v4)    # User data encryption
+│   ├── block_db (v104, key v2)      # Database protection  
+│   └── test_guard (v0, key v0)      # Test environment
+└── Standard                          # Access control only (no encryption)
+    ├── rivapolicy (v0)
+    ├── PolicyGuardPoint (v0)
+    └── FaiPolicy (v0)
+```
+
+#### Policy Element Hierarchy
+**1. Resource Sets** (What to protect):
+- **Directory-based**: `db_mamang` (MySQL), `data` (user files), `engineer` (engineering data)
+- **Path Patterns**: `\fdd\*` (directory matching), `*` (wildcard), recursive subfolder inclusion
+- **File System Support**: Local File System + HDFS integration
+- **Configuration**: Directory path + File pattern + Include/Exclude subfolders
+
+**2. User Sets** (Who can access):
+- **System Integration**: `demo_user` contains `primasys` (UID 1000), `Primasys` (manual entry)
+- **Database Service**: `akun-mysql` contains MySQL service accounts
+- **Enterprise Features**: "Browse users" (OS integration), "Manually add user" (custom entries)
+- **Authentication**: OS domain integration for enterprise directory services
+
+**3. Process Sets** (Which applications):
+- **Database Protection**: `mariadb-fa` → `/usr/sbin/mariadb` (MariaDB daemon)
+- **Text Editors**: `nano` → `/usr/bin/nano`
+- **Custom Groups**: `fgfdg`, `GroupProcessPai` (application-specific process groups)
+- **Validation Methods**: Directory + File + Signature matching for process identification
+
+**4. Security Rules** (Ordered policy evaluation):
+- **Rule Priority**: Order 1, 2, 3, 4... (first match wins, like firewall rules)
+- **Rule Components**: Resource Set + User Set + Process Set + Action + Effect + Browsing
+- **Evaluation Logic**: Hierarchical rule processing with precedence-based decisions
+
+### 11.2 Advanced Action Granularity
+CM reveals sophisticated action permission system beyond basic read/write:
+
+#### Basic Operations
+- `read` - Read file operations
+- `write` - Write file operations  
+- `all_ops` - All file operations
+- `key_op` - Key management operations
+
+#### Advanced File Operations
+- `f_rd` - Read file
+- `f_wr` - Write file
+- `f_wr_app` - Write file (append mode)
+- `f_cre` - Create file
+- `f_ren` - Rename file
+- `f_link` - Link file
+- `f_rm` - Remove file
+- `f_rd_att` - Read file attribute
+- `f_chg_att` - Change file attribute
+- `f_rd_sec` - Read file security
+- `f_chg_sec` - Change file security
+
+#### Directory Operations
+- `d_rd` - Read directory
+- `d_ren` - Rename directory
+- `d_rd_att` - Read directory attribute
+- `d_chg_att` - Change directory attribute
+- `d_rd_sec` - Read directory security
+- `d_chg_sec` - Change directory security
+- `d_mkdir` - Make directory
+- `d_rmdir` - Remove directory
+
+### 11.3 Effect Permissions Architecture
+CM defines three core effects that determine policy behavior:
+
+#### Effect Types
+1. **Permit**: "Allows access attempts to the resource. For example, you can specify an effect that allows writing to a directory."
+2. **Deny**: "Denies access attempts to the resource. For example, you can specify an effect that denies any attempts to access a resource."
+
+#### Effect Options
+1. **ApplyKey**: "Applies an encryption key to the data in a GuardPoint. When applied, the data copied to the GuardPoint is encrypted with the specified key. When the data in the GuardPoint is accessed, it is decrypted using the same key."
+2. **Audit**: "Creates a message log entry for each qualifying event that records who is accessing what information and when."
+
+#### Combined Effects
+- `permit,applykey` - Allow access with transparent encryption/decryption
+- `permit,audit,applykey` - Allow + encrypt + comprehensive audit logging
+- `permit,audit` - Allow access with audit logging (no encryption)
+
+### 11.4 Enterprise Database Protection Pattern
+Analysis of `block_db` policy reveals the exact MySQL protection configuration:
+
+#### Database Protection Rule Structure
+```
+Rule 2: Database Access
+├── Resource Set: db_mamang (MySQL database directory)
+├── User Set: (not specified - inherited from higher rules)  
+├── Process Set: mariadb-fa (MariaDB daemon)
+├── Action: read,write,key_op,all_ops
+├── Effect: permit,audit,applykey
+└── Browsing: Yes (allow directory listing)
+```
+
+#### Multi-Rule Policy Structure
+```
+block_db Policy Rules:
+├── Rule 1: key_op → permit,applykey (No browsing)
+├── Rule 2: db_mamang + mariadb-fa → read,write,key_op,all_ops → permit,audit,applykey (Browsing: Yes)
+└── Rule 3: (general) → read → permit,audit (Browsing: Yes)
+```
+
+### 11.5 Policy Configuration Management
+CM provides enterprise-grade policy management capabilities:
+
+#### Policy Creation and Modification
+- **Web-based Interface**: Complete CRUD operations for all policy elements
+- **Real-time Updates**: "Any updates to the policy will be applied without confirmation if the policy is not in use by any Enabled/Active GuardPoints"
+- **Version Control**: Automatic policy versioning (demo_policy v30, block_db v104)
+- **Atomic Operations**: Policy changes applied atomically to prevent inconsistent states
+
+#### Policy Element Management
+- **Resource Sets**: 7 sets with directory patterns and file system type specification
+- **User Sets**: 4 sets with OS integration and manual user management
+- **Process Sets**: 4 sets with executable path and signature validation
+- **Signature Sets**: Digital signature validation for process authenticity
+
+#### GuardPoint Integration
+- **Active Monitoring**: Real-time status (3 Total GuardPoints, 3 Active, 0 Inactive, 0 Disabled)
+- **Mount Management**: Integration with filesystem mounting and protection
+- **Policy Assignment**: Dynamic policy assignment to guard points
+- **Performance Monitoring**: LDT Progress tracking ("Rekeyed", "N/A")
+
+### 11.6 Key Architecture Insights for Takakrypt Implementation
+
+#### Critical Requirements Identified
+1. **Mount-Based Architecture**: GuardPoints are filesystem mounts, not individual file hooks
+2. **Hierarchical Rule Evaluation**: Ordered rules with first-match-wins policy  
+3. **Granular Action Control**: 20+ specific file/directory operations beyond basic read/write
+4. **Multi-Effect System**: Permit/Deny + ApplyKey + Audit combinations
+5. **Enterprise Integration**: OS user/group integration, process signature validation
+6. **Real-time Management**: Web interface for policy CRUD with immediate application
+
+#### Implementation Blueprint
+The CM analysis provides the exact policy structure needed for enterprise-grade Takakrypt:
+
+```yaml
+# Required Takakrypt Policy Structure (based on CM analysis)
+policies:
+  mysql_protection:
+    type: "live_data_transformation"
+    version: 1
+    security_rules:
+      - order: 1
+        resource_set: "mysql_data"
+        user_set: null
+        process_set: "mysql_processes" 
+        actions: ["key_op"]
+        effects: ["permit", "applykey"]
+        browsing: false
+      - order: 2
+        resource_set: "mysql_data"
+        user_set: null
+        process_set: "mysql_processes"
+        actions: ["read", "write", "key_op", "all_ops"]
+        effects: ["permit", "audit", "applykey"]  
+        browsing: true
+
+resource_sets:
+  mysql_data:
+    paths: ["/var/lib/mysql/*"]
+    include_subfolders: true
+    filesystem_type: "local"
+
+process_sets:
+  mysql_processes:
+    processes:
+      - directory: "/usr/sbin/"
+        file: "mysqld"
+        signature: null
+      - directory: "/usr/sbin/"  
+        file: "mariadbd"
+        signature: null
+```
+
+This CM analysis provides the complete enterprise policy management blueprint for implementing production-grade transparent encryption in Takakrypt.
