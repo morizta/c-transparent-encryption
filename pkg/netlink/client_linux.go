@@ -368,12 +368,17 @@ func (c *Client) SendEncryptionRequest(keyID string, data []byte) (*Message, err
 		"data_size": len(data),
 	}).Debug("Sending encryption request")
 
-	// TODO: Implement proper encryption request serialization
-	requestData := append([]byte(keyID+":"), data...)
+	seq := c.getNextSequence()
+
+	// Serialize encryption request using proper protocol
+	requestData, err := SerializeEncryptionRequest(seq, keyID, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize encryption request: %w", err)
+	}
 
 	msg := &Message{
 		Type:      TAKAKRYPT_OP_ENCRYPT,
-		Sequence:  c.getNextSequence(),
+		Sequence:  seq,
 		Data:      requestData,
 		Timestamp: time.Now(),
 	}
@@ -402,12 +407,17 @@ func (c *Client) SendDecryptionRequest(keyID string, encryptedData []byte) (*Mes
 		"data_size": len(encryptedData),
 	}).Debug("Sending decryption request")
 
-	// TODO: Implement proper decryption request serialization
-	requestData := append([]byte(keyID+":"), encryptedData...)
+	seq := c.getNextSequence()
+
+	// Serialize decryption request using proper protocol
+	requestData, err := SerializeDecryptionRequest(seq, keyID, encryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize decryption request: %w", err)
+	}
 
 	msg := &Message{
 		Type:      TAKAKRYPT_OP_DECRYPT,
-		Sequence:  c.getNextSequence(),
+		Sequence:  seq,
 		Data:      requestData,
 		Timestamp: time.Now(),
 	}

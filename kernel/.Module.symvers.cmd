@@ -1,0 +1,1 @@
+cmd_/home/ntoi/c-transparent-encryption/kernel/Module.symvers := sed 's/\.ko$$/\.o/' /home/ntoi/c-transparent-encryption/kernel/modules.order | scripts/mod/modpost -m -a  -o /home/ntoi/c-transparent-encryption/kernel/Module.symvers -e -i Module.symvers   -T -
