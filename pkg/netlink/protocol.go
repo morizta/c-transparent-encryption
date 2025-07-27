@@ -360,8 +360,8 @@ func SerializePolicyCheckResponse(seq uint32, allowAccess, encryptFile bool, key
 		return nil, fmt.Errorf("policy name too long: %d > 255", len(policyName))
 	}
 
-	// Calculate total data length
-	dataLen := 20 + len(keyID) + len(reason) + len(policyName) // 20 bytes for fixed fields
+	// Calculate total data length (for future use if needed)
+	// dataLen := 20 + len(keyID) + len(reason) + len(policyName) // 20 bytes for fixed fields
 
 	// Create response data structure
 	respData := PolicyCheckResponseData{

@@ -464,7 +464,7 @@ func (w *Worker) processRequests() error {
 	// Send response back to kernel
 	if response != nil {
 		responseMsg := &netlink.Message{
-			Type:      msg.Header.Operation,
+			Type:      uint32(msg.Header.Operation),
 			Sequence:  msg.Header.Sequence,
 			Data:      response,
 			Timestamp: time.Now(),

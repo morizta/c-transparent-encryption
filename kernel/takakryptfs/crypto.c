@@ -5,7 +5,14 @@
 extern int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg, 
                                            size_t msg_size, void *response, 
                                            size_t response_size);
-extern struct takakrypt_global_state *takakrypt_global_state;
+extern struct takakrypt_state *takakrypt_global_state;
+
+/* Protocol constants */
+#define TAKAKRYPT_MSG_MAGIC      0x54414B41
+#define TAKAKRYPT_PROTOCOL_VERSION 1
+#define TAKAKRYPT_OP_ENCRYPT     2
+#define TAKAKRYPT_OP_DECRYPT     3
+#define TAKAKRYPT_MAX_KEY_ID_LEN 64
 
 /**
  * takakryptfs_send_encrypt_request - Send encryption request via netlink
@@ -56,7 +63,7 @@ int takakryptfs_send_encrypt_request(const char *key_id, const void *plaintext,
     request->header.magic = TAKAKRYPT_MSG_MAGIC;
     request->header.version = TAKAKRYPT_PROTOCOL_VERSION;
     request->header.operation = TAKAKRYPT_OP_ENCRYPT;
-    request->header.sequence = atomic_inc_return(&takakrypt_global_state->sequence);
+    request->header.sequence = atomic_inc_return(&takakrypt_global_state->sequence_counter);
     request->header.payload_size = key_id_len + plaintext_len + 8; /* 8 bytes for lengths */
     request->header.timestamp = ktime_get_real_seconds();
     request->key_id_len = key_id_len;
@@ -176,7 +183,7 @@ int takakryptfs_send_decrypt_request(const char *key_id, const void *ciphertext,
     request->header.magic = TAKAKRYPT_MSG_MAGIC;
     request->header.version = TAKAKRYPT_PROTOCOL_VERSION;
     request->header.operation = TAKAKRYPT_OP_DECRYPT;
-    request->header.sequence = atomic_inc_return(&takakrypt_global_state->sequence);
+    request->header.sequence = atomic_inc_return(&takakrypt_global_state->sequence_counter);
     request->header.payload_size = key_id_len + ciphertext_len + 8; /* 8 bytes for lengths */
     request->header.timestamp = ktime_get_real_seconds();
     request->key_id_len = key_id_len;

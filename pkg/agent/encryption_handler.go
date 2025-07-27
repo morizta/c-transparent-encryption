@@ -7,7 +7,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"takakrypt/internal/crypto"
-	"takakrypt/pkg/netlink"
 )
 
 // EncryptionHandler handles encryption/decryption requests from kernel

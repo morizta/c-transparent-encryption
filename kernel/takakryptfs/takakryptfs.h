@@ -183,6 +183,8 @@ int takakryptfs_setup_lower_path(struct takakryptfs_mount_ctx *ctx);
 
 /* policy.c */
 int takakryptfs_evaluate_policy(struct file *file, struct takakryptfs_policy_result *result);
+int takakryptfs_evaluate_policy_v2(struct file *file, const char *operation,
+                                   struct takakryptfs_policy_result *result);
 int takakryptfs_check_file_access(struct file *file, int mask);
 bool takakryptfs_should_encrypt_file(struct inode *inode, const char *filepath);
 int takakryptfs_policy_init(void);
