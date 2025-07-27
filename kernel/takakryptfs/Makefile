@@ -16,7 +16,9 @@ all: modules
 # Build kernel modules
 modules:
 	@echo "Building Takakrypt stackable filesystem module..."
-	$(MAKE) -C $(KERNEL_BUILD) M=$(PWD) modules
+	@echo "Copying symbols from parent module..."
+	@cp ../Module.symvers . 2>/dev/null || true
+	$(MAKE) -C $(KERNEL_BUILD) M=$(PWD) KBUILD_EXTRA_SYMBOLS=../Module.symvers modules
 
 # Clean build artifacts
 clean:

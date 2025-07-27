@@ -33,21 +33,8 @@ type Message struct {
 // Constants for netlink communication
 const (
 	TAKAKRYPT_NETLINK_FAMILY = 31
-	TAKAKRYPT_MSG_MAGIC      = 0x54414B41 // "TAKA"
-	TAKAKRYPT_PROTOCOL_VERSION = 1
 
-	// Operation types
-	TAKAKRYPT_OP_CHECK_POLICY = 1
-	TAKAKRYPT_OP_ENCRYPT      = 2
-	TAKAKRYPT_OP_DECRYPT      = 3
-	TAKAKRYPT_OP_GET_STATUS   = 4
-	TAKAKRYPT_OP_SET_CONFIG   = 5
-	TAKAKRYPT_OP_HEALTH_CHECK = 6
-
-	// Response status codes
-	TAKAKRYPT_STATUS_SUCCESS        = 0
-	TAKAKRYPT_STATUS_DENIED         = 1
-	TAKAKRYPT_STATUS_ERROR          = 2
+	// Additional status codes (others are in protocol.go)
 	TAKAKRYPT_STATUS_NOT_FOUND      = 3
 	TAKAKRYPT_STATUS_INVALID_REQUEST = 4
 	TAKAKRYPT_STATUS_TIMEOUT        = 5

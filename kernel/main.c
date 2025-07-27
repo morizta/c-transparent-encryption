@@ -279,3 +279,4 @@ module_exit(takakrypt_cleanup_module);
 
 /* Export symbols for other kernel modules if needed */
 EXPORT_SYMBOL(takakrypt_global_state);
+EXPORT_SYMBOL(takakrypt_send_request_and_wait);

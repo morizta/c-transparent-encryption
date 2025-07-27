@@ -219,6 +219,9 @@ int takakrypt_netlink_init(void);
 void takakrypt_netlink_cleanup(void);
 int takakrypt_send_request(struct takakrypt_msg_header *msg, size_t msg_size);
 void takakrypt_netlink_recv(struct sk_buff *skb);
+int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg, 
+                                    size_t msg_size, void *response, 
+                                    size_t response_size);
 
 /* VFS hooks */
 int takakrypt_file_open(struct inode *inode, struct file *file);

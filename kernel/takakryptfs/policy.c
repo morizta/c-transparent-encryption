@@ -1,4 +1,9 @@
 #include "takakryptfs.h"
+#include "../takakrypt.h"
+
+/* Forward declaration */
+static int takakryptfs_evaluate_policy_fallback(struct file *file,
+                                               struct takakryptfs_policy_result *result);
 
 /**
  * takakryptfs_send_policy_request - Send policy evaluation request via netlink
@@ -24,6 +29,17 @@ static int takakryptfs_send_policy_request(const char *filepath, const char *ope
     pid = current->pid;
     
     /* Calculate request size */
+    /* Forward declarations for functions from parent module */
+    extern struct takakrypt_state *takakrypt_global_state;
+    extern int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg, 
+                                               size_t msg_size, void *response, 
+                                               size_t response_size);
+    
+    /* Protocol constants */
+    #define TAKAKRYPT_MSG_MAGIC      0x54414B41
+    #define TAKAKRYPT_PROTOCOL_VERSION 1
+    #define TAKAKRYPT_OP_CHECK_POLICY  1
+    
     request_size = sizeof(struct takakrypt_msg_header) + 
                    sizeof(uint32_t) * 3 +  /* uid, gid, pid */
                    strlen(filepath) + 1 +   /* filepath */
@@ -48,7 +64,7 @@ static int takakryptfs_send_policy_request(const char *filepath, const char *ope
     request->magic = TAKAKRYPT_MSG_MAGIC;
     request->version = TAKAKRYPT_PROTOCOL_VERSION;
     request->operation = TAKAKRYPT_OP_CHECK_POLICY;
-    request->sequence = atomic_inc_return(&takakrypt_global_state->sequence);
+    request->sequence = atomic_inc_return(&takakrypt_global_state->sequence_counter);
     request->payload_size = request_size - sizeof(struct takakrypt_msg_header);
     request->timestamp = ktime_get_real_seconds();
     

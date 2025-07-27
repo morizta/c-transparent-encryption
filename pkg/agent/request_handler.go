@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"takakrypt/internal/config"
+	"takakrypt/internal/crypto"
 	"takakrypt/internal/policy"
 	"takakrypt/internal/process"
 	"takakrypt/pkg/netlink"
@@ -95,7 +95,7 @@ func (h *RequestHandler) ProcessMessage(ctx context.Context, msg *netlink.Takakr
 	totalRequests := h.agent.stats.RequestsProcessed
 	if totalRequests > 0 {
 		h.agent.stats.AverageResponseTime = time.Duration(
-			(int64(h.agent.stats.AverageResponseTime)*(totalRequests-1) + int64(duration)) / totalRequests)
+			(int64(h.agent.stats.AverageResponseTime)*int64(totalRequests-1) + int64(duration)) / int64(totalRequests))
 	}
 	h.agent.stats.mu.Unlock()
 
@@ -204,8 +204,9 @@ func (h *RequestHandler) handleEncryption(ctx context.Context, msg *netlink.Taka
 		"data_size": len(data),
 	}).Debug("Processing encryption request")
 
-	// Perform encryption using the encryption engine
-	encryptedData, err := h.agent.encEngine.Encrypt(ctx, keyID, data)
+	// Perform encryption using the file encryption engine
+	fileEngine := crypto.NewFileEncryptionEngine()
+	encryptedData, err := fileEngine.EncryptFile(data, keyID)
 	if err != nil {
 		return nil, fmt.Errorf("encryption failed: %w", err)
 	}
@@ -239,8 +240,9 @@ func (h *RequestHandler) handleDecryption(ctx context.Context, msg *netlink.Taka
 		"data_size": len(encryptedData),
 	}).Debug("Processing decryption request")
 
-	// Perform decryption using the encryption engine
-	decryptedData, err := h.agent.encEngine.Decrypt(ctx, keyID, encryptedData)
+	// Perform decryption using the file encryption engine
+	fileEngine := crypto.NewFileEncryptionEngine()
+	decryptedData, err := fileEngine.DecryptFile(encryptedData, keyID)
 	if err != nil {
 		return nil, fmt.Errorf("decryption failed: %w", err)
 	}
@@ -311,6 +313,7 @@ func (h *RequestHandler) createEvaluationContext(path string, operation, uid, gi
 	if u, err := user.LookupId(strconv.Itoa(int(uid))); err == nil {
 		username = u.Username
 	}
+	_ = username // Will be used later for logging
 
 	// Get enhanced process information
 	processInfo, err := h.processDetector.GetProcessInfo(int(pid))

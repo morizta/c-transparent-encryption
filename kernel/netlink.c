@@ -558,3 +558,55 @@ void takakrypt_netlink_cleanup(void)
     
     takakrypt_info("Netlink communication cleaned up\n");
 }
+
+/**
+ * takakrypt_send_request_and_wait - Send request to userspace and wait for response
+ * @msg: Message header to send
+ * @msg_size: Size of the message
+ * @response: Buffer for response data
+ * @response_size: Size of response buffer
+ * 
+ * Returns 0 on success, negative error code on failure
+ */
+int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg, 
+                                    size_t msg_size, void *response, 
+                                    size_t response_size)
+{
+    struct pending_request *pending_req;
+    int ret;
+    
+    if (!msg || !response) {
+        return -EINVAL;
+    }
+    
+    /* Check if agent is connected */
+    if (takakrypt_global_state->agent_pid == 0) {
+        takakrypt_debug("No agent connected for request\n");
+        return -ENOTCONN;
+    }
+    
+    /* Create pending request */
+    pending_req = takakrypt_create_pending_request(msg->sequence);
+    if (!pending_req) {
+        return -ENOMEM;
+    }
+    
+    /* Send request */
+    ret = takakrypt_send_request(msg, msg_size);
+    if (ret) {
+        takakrypt_cleanup_pending_request(pending_req);
+        return ret;
+    }
+    
+    /* Wait for response */
+    ret = takakrypt_wait_for_response(pending_req, 5000); /* 5 second timeout */
+    if (ret == 0 && pending_req->response_data && pending_req->response_size > 0) {
+        size_t copy_size = min(response_size, pending_req->response_size);
+        memcpy(response, pending_req->response_data, copy_size);
+    }
+    
+    /* Cleanup */
+    takakrypt_cleanup_pending_request(pending_req);
+    
+    return ret;
+}
