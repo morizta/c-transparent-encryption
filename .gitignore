@@ -31,6 +31,20 @@ kernel/.tmp_versions/
 kernel/modules.builtin
 kernel/modules.order
 
+# Kernel build command cache files
+kernel/**/.*.cmd
+kernel/**/*.o
+kernel/**/*.ko
+kernel/**/*.mod.*
+kernel/**/Module.symvers
+kernel/**/modules.order
+
+# Top-level kernel build artifacts
+.*.cmd
+*.symvers
+modules.order
+Module.symvers
+
 # IDE files
 .vscode/
 .idea/
@@ -68,6 +82,13 @@ Thumbs.db
 test-*.yaml
 test-*.txt
 *.test-*
+
+# Test binaries and executables
+test-encryption
+test-netlink
+test-multi-guardpoint
+test-process-detection
+test-uid-simulation
 
 # Configuration files with secrets (keep examples)
 config-local.yaml
