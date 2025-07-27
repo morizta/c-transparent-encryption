@@ -27,6 +27,25 @@ const (
 	// Protocol constants
 	TAKAKRYPT_HEADER_SIZE = 32 // Size of TakakryptHeader in bytes
 	MAX_MESSAGE_SIZE      = 1024 * 1024 // 1MB max message size
+	
+	// Protocol magic and version
+	TAKAKRYPT_MSG_MAGIC      = 0x54414B41 // "TAKA"
+	TAKAKRYPT_PROTOCOL_VERSION = 1
+
+	// Operation types
+	TAKAKRYPT_OP_CHECK_POLICY = 1
+	TAKAKRYPT_OP_ENCRYPT      = 2
+	TAKAKRYPT_OP_DECRYPT      = 3
+	TAKAKRYPT_OP_GET_STATUS   = 4
+	TAKAKRYPT_OP_SET_CONFIG   = 5
+	TAKAKRYPT_OP_HEALTH_CHECK = 6
+
+	// Response status codes
+	TAKAKRYPT_STATUS_SUCCESS        = 0
+	TAKAKRYPT_STATUS_DENIED         = 1
+	TAKAKRYPT_STATUS_ERROR          = 2
+	TAKAKRYPT_STATUS_KEY_NOT_FOUND  = 3
+	TAKAKRYPT_STATUS_INVALID_DATA   = 4
 )
 
 // EncryptionRequestData represents the data portion of an encryption request
@@ -56,6 +75,19 @@ type PolicyCheckRequestData struct {
 	PID       uint32 // Process ID
 	// Followed by:
 	// Path     []byte // File path (PathLen bytes)
+}
+
+// PolicyCheckResponseData represents the data portion of a policy check response
+type PolicyCheckResponseData struct {
+	AllowAccess  uint32 // 1 if access is allowed, 0 if denied
+	EncryptFile  uint32 // 1 if file should be encrypted, 0 if not
+	KeyIDLen     uint32 // Length of key ID string
+	ReasonLen    uint32 // Length of reason string
+	PolicyLen    uint32 // Length of policy name string
+	// Followed by:
+	// KeyID    []byte // Key ID string (KeyIDLen bytes)
+	// Reason   []byte // Reason string (ReasonLen bytes)
+	// Policy   []byte // Policy name string (PolicyLen bytes)
 }
 
 // SerializeEncryptionRequest creates a binary encryption request
@@ -285,6 +317,80 @@ func ParseDecryptionRequest(msg *TakakryptMessage) (keyID string, encryptedData 
 	encDataBytes := msg.Data[8+reqData.KeyIDLen : 8+reqData.KeyIDLen+reqData.DataLen]
 
 	return string(keyIDBytes), encDataBytes, nil
+}
+
+// ParsePolicyCheckRequest extracts policy check request data
+func ParsePolicyCheckRequest(msg *TakakryptMessage) (path string, operation, uid, gid, pid uint32, err error) {
+	if msg.Header.Operation != TAKAKRYPT_OP_CHECK_POLICY {
+		return "", 0, 0, 0, 0, fmt.Errorf("not a policy check request: %d", msg.Header.Operation)
+	}
+
+	if len(msg.Data) < 20 {
+		return "", 0, 0, 0, 0, fmt.Errorf("policy check request data too short: %d", len(msg.Data))
+	}
+
+	// Parse request data structure
+	reqData := PolicyCheckRequestData{}
+	buf := bytes.NewReader(msg.Data[:20])
+	if err := binary.Read(buf, binary.LittleEndian, &reqData); err != nil {
+		return "", 0, 0, 0, 0, fmt.Errorf("failed to parse policy check request: %w", err)
+	}
+
+	// Validate lengths
+	expectedLen := 20 + int(reqData.PathLen)
+	if len(msg.Data) < expectedLen {
+		return "", 0, 0, 0, 0, fmt.Errorf("policy check request data incomplete: %d < %d", len(msg.Data), expectedLen)
+	}
+
+	// Extract path
+	pathBytes := msg.Data[20 : 20+reqData.PathLen]
+
+	return string(pathBytes), reqData.Operation, reqData.UID, reqData.GID, reqData.PID, nil
+}
+
+// SerializePolicyCheckResponse creates a binary policy check response
+func SerializePolicyCheckResponse(seq uint32, allowAccess, encryptFile bool, keyID, reason, policyName string) ([]byte, error) {
+	if len(keyID) > 255 {
+		return nil, fmt.Errorf("key ID too long: %d > 255", len(keyID))
+	}
+	if len(reason) > 1024 {
+		return nil, fmt.Errorf("reason too long: %d > 1024", len(reason))
+	}
+	if len(policyName) > 255 {
+		return nil, fmt.Errorf("policy name too long: %d > 255", len(policyName))
+	}
+
+	// Calculate total data length
+	dataLen := 20 + len(keyID) + len(reason) + len(policyName) // 20 bytes for fixed fields
+
+	// Create response data structure
+	respData := PolicyCheckResponseData{
+		AllowAccess: 0,
+		EncryptFile: 0,
+		KeyIDLen:    uint32(len(keyID)),
+		ReasonLen:   uint32(len(reason)),
+		PolicyLen:   uint32(len(policyName)),
+	}
+
+	if allowAccess {
+		respData.AllowAccess = 1
+	}
+	if encryptFile {
+		respData.EncryptFile = 1
+	}
+
+	// Serialize response data
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.LittleEndian, respData); err != nil {
+		return nil, fmt.Errorf("failed to serialize response data: %w", err)
+	}
+
+	// Append strings
+	buf.Write([]byte(keyID))
+	buf.Write([]byte(reason))
+	buf.Write([]byte(policyName))
+
+	return SerializeResponse(seq, TAKAKRYPT_OP_CHECK_POLICY, TAKAKRYPT_STATUS_SUCCESS, buf.Bytes())
 }
 
 // SerializeResponse creates a binary response message

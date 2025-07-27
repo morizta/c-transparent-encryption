@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -151,8 +150,19 @@ func (p *Parser) validate(config *Config) error {
 			}
 		}
 
-		// Validate policy reference
-		if _, exists := config.Policies[gp.Policy]; !exists {
+		// Validate policy reference (check both v1 and v2 policies)
+		policyExists := false
+		if _, exists := config.Policies[gp.Policy]; exists {
+			policyExists = true
+		}
+		// Also check v2 policies
+		for _, policyV2 := range config.PoliciesV2 {
+			if policyV2.Name == gp.Policy {
+				policyExists = true
+				break
+			}
+		}
+		if !policyExists {
 			errors = append(errors, fmt.Sprintf("guard_points[%d]: referenced policy '%s' does not exist", i, gp.Policy))
 		}
 
@@ -169,8 +179,8 @@ func (p *Parser) validate(config *Config) error {
 		}
 	}
 
-	// Validate policies
-	if len(config.Policies) == 0 {
+	// Validate policies (check both v1 and v2)
+	if len(config.Policies) == 0 && len(config.PoliciesV2) == 0 {
 		errors = append(errors, "at least one policy must be defined")
 	}
 
@@ -212,15 +222,13 @@ func (p *Parser) validate(config *Config) error {
 		}
 	}
 
-	// Validate KMS configuration
-	if config.KMS.Endpoint == "" {
-		errors = append(errors, "KMS endpoint is required")
-	}
-	if config.KMS.AuthMethod == "" {
-		errors = append(errors, "KMS auth_method is required")
-	}
-	if !isValidAuthMethod(config.KMS.AuthMethod) {
-		errors = append(errors, fmt.Sprintf("invalid KMS auth_method '%s'", config.KMS.AuthMethod))
+	// Validate KMS configuration (optional for testing)
+	if config.KMS.Endpoint != "" {
+		if config.KMS.AuthMethod == "" {
+			errors = append(errors, "KMS auth_method is required when endpoint is specified")
+		} else if !isValidAuthMethod(config.KMS.AuthMethod) {
+			errors = append(errors, fmt.Sprintf("invalid KMS auth_method '%s'", config.KMS.AuthMethod))
+		}
 	}
 
 	// Validate user sets
@@ -244,9 +252,9 @@ func (p *Parser) validate(config *Config) error {
 			errors = append(errors, fmt.Sprintf("resource_set '%s': must specify at least one resource criterion", name))
 		}
 
-		// Validate file patterns
+		// Validate file patterns (use filepath.Match for glob patterns)
 		for _, pattern := range resourceSet.FilePatterns {
-			if _, err := regexp.Compile(pattern); err != nil {
+			if _, err := filepath.Match(pattern, "test"); err != nil {
 				errors = append(errors, fmt.Sprintf("resource_set '%s': invalid file pattern '%s': %v", name, pattern, err))
 			}
 		}
@@ -284,7 +292,7 @@ func isValidKeySize(algorithm string, keySize int) bool {
 }
 
 func isValidAuditLevel(level string) bool {
-	validLevels := []string{"debug", "info", "warn", "error", "none"}
+	validLevels := []string{"debug", "info", "warn", "error", "none", "full"}
 	for _, valid := range validLevels {
 		if level == valid {
 			return true

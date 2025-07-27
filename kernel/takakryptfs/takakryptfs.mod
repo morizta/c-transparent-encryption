@@ -1,0 +1,2 @@
+/home/ntoi/c-transparent-encryption/kernel/takakryptfs/main_legacy.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/super.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/mount.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/inode.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/file.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/dir.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/crypto.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/policy.o
+

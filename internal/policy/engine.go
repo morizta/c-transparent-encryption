@@ -42,9 +42,13 @@ type EvaluationContext struct {
 type EvaluationResult struct {
 	Allow       bool
 	Policy      *config.Policy
+	PolicyV2    *config.PolicyV2  // New policy with security rules
 	GuardPoint  *GuardPoint
 	Reason      string
 	KeyID       string
+	Encrypt     bool             // Whether to encrypt the file
+	Audit       bool             // Whether to audit the operation
+	RuleOrder   int              // Which rule matched
 	CacheHint   time.Duration
 }
 
@@ -139,6 +143,158 @@ func (e *Engine) EvaluateAccess(ctx context.Context, evalCtx *EvaluationContext)
 	}
 
 	return result, nil
+}
+
+// EvaluateAccessV2 evaluates access using ordered security rules (new implementation)
+func (e *Engine) EvaluateAccessV2(ctx context.Context, evalCtx *EvaluationContext) (*EvaluationResult, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	// Find matching guard point
+	guardPoint := e.findMatchingGuardPoint(evalCtx)
+	if guardPoint == nil {
+		return &EvaluationResult{
+			Allow:  true,
+			Reason: "file not under guard point protection",
+		}, nil
+	}
+
+	// Check if we have a V2 policy with security rules
+	policyV2 := e.findPolicyV2(guardPoint.Policy)
+	if policyV2 == nil {
+		// Fallback to V1 policy evaluation
+		return e.EvaluateAccess(ctx, evalCtx)
+	}
+
+	if !policyV2.Enabled {
+		return &EvaluationResult{
+			Allow:  true,
+			Reason: "policy is disabled",
+		}, nil
+	}
+
+	// Create rule engine for this policy
+	ruleEngine := NewRuleEngine(policyV2)
+	
+	// Build rule evaluation context
+	ruleCtx := &RuleEvaluationContext{
+		ResourcePath: evalCtx.FilePath,
+		ResourceType: "file", // TODO: Detect if directory
+		UserID:       evalCtx.UserID,
+		ProcessName:  evalCtx.ProcessName,
+		ProcessPath:  evalCtx.ProcessPath,
+		ProcessID:    evalCtx.ProcessID,
+		Operation:    evalCtx.Operation,
+	}
+	
+	// Get user information
+	userInfo, err := e.getUserInfo(evalCtx.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	ruleCtx.Username = userInfo.Username
+	ruleCtx.Groups = userInfo.Groups
+
+	// Evaluate security rules
+	decision, err := ruleEngine.EvaluateRules(ruleCtx, e.config)
+	if err != nil {
+		return nil, fmt.Errorf("rule evaluation failed: %w", err)
+	}
+
+	result := &EvaluationResult{
+		Allow:      decision.Permitted,
+		PolicyV2:   policyV2,
+		GuardPoint: guardPoint,
+		Reason:     decision.Reason,
+		Encrypt:    decision.Encrypt,
+		Audit:      decision.Audit,
+		RuleOrder:  decision.RuleOrder,
+		CacheHint:  5 * time.Minute, // Cache for 5 minutes
+	}
+
+	// Generate key ID for encryption
+	if result.Allow && result.Encrypt {
+		result.KeyID = e.generateKeyIDV2(policyV2, guardPoint, evalCtx)
+	}
+
+	return result, nil
+}
+
+// findPolicyV2 looks for a V2 policy (with security rules)
+func (e *Engine) findPolicyV2(policyName string) *config.PolicyV2 {
+	// Search through the v2 policies
+	for i := range e.config.PoliciesV2 {
+		if e.config.PoliciesV2[i].Name == policyName {
+			return &e.config.PoliciesV2[i]
+		}
+	}
+	return nil
+}
+
+// generateKeyIDV2 generates a key ID for V2 policies
+func (e *Engine) generateKeyIDV2(policy *config.PolicyV2, gp *GuardPoint, evalCtx *EvaluationContext) string {
+	return fmt.Sprintf("policy_%s_v%d_key_v%d", policy.Name, policy.Version, policy.KeyVersion)
+}
+
+// getUserInfo retrieves user information with caching
+func (e *Engine) getUserInfo(uid int) (*UserInfo, error) {
+	uidStr := strconv.Itoa(uid)
+	
+	// Check cache first
+	if userInfo, exists := e.userCache[uidStr]; exists {
+		// Check if cache is still valid (1 hour TTL)
+		if time.Since(userInfo.CachedAt) < time.Hour {
+			return userInfo, nil
+		}
+	}
+	
+	// Lookup user information
+	userInfo, err := e.lookupUser(uid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup user %d: %w", uid, err)
+	}
+	
+	// Cache the result
+	e.userCache[uidStr] = userInfo
+	
+	return userInfo, nil
+}
+
+// lookupUser performs actual user lookup from system
+func (e *Engine) lookupUser(uid int) (*UserInfo, error) {
+	user, err := user.LookupId(strconv.Itoa(uid))
+	if err != nil {
+		return nil, err
+	}
+	
+	// Get group information
+	groups, err := user.GroupIds()
+	if err != nil {
+		return nil, err
+	}
+	
+	groupNames := make([]string, 0, len(groups))
+	gids := make([]int, 0, len(groups))
+	
+	for _, gidStr := range groups {
+		if gid, err := strconv.Atoi(gidStr); err == nil {
+			gids = append(gids, gid)
+			
+			// Note: user.LookupGroupId doesn't exist, skip group name lookup for now
+			// if group, err := user.LookupGroupId(gidStr); err == nil {
+			//	groupNames = append(groupNames, group.Name)
+			// }
+		}
+	}
+	
+	return &UserInfo{
+		UID:      uid,
+		Username: user.Username,
+		Groups:   groupNames,
+		GIDs:     gids,
+		HomeDir:  user.HomeDir,
+		CachedAt: time.Now(),
+	}, nil
 }
 
 // findMatchingGuardPoint finds the guard point that matches the file path
@@ -439,8 +595,8 @@ func (e *Engine) evaluateResourceSets(resourceSets []string, filePath string) bo
 	return false
 }
 
-// getUserInfo retrieves and caches user information
-func (e *Engine) getUserInfo(uid int) (*UserInfo, error) {
+// getUserInfoV2 retrieves and caches user information (renamed to avoid conflict)
+func (e *Engine) getUserInfoV2(uid int) (*UserInfo, error) {
 	uidStr := strconv.Itoa(uid)
 	
 	// Check cache
@@ -542,7 +698,9 @@ func (e *Engine) compileGuardPoints() error {
 	e.guardPoints = make([]*GuardPoint, len(e.config.GuardPoints))
 
 	for i, gp := range e.config.GuardPoints {
-		compiledGP := &GuardPoint{GuardPoint: &gp}
+		// Create a copy to avoid the loop variable pointer issue
+		gpCopy := gp
+		compiledGP := &GuardPoint{GuardPoint: &gpCopy}
 
 		// Compile path pattern
 		if strings.Contains(gp.Path, "*") {
@@ -607,6 +765,13 @@ func (e *Engine) UpdateConfiguration(cfg *config.Config) error {
 	e.compiledPatterns = make(map[string]*regexp.Regexp)
 
 	return e.compileGuardPoints()
+}
+
+// GetConfig returns the current configuration
+func (e *Engine) GetConfig() *config.Config {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.config
 }
 
 // GetStatistics returns policy engine statistics

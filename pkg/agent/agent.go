@@ -33,6 +33,7 @@ type Agent struct {
 	kmsClient     kms.KMSClient
 	policyEngine  *policy.Engine
 	netlinkClient *netlink.Client
+	requestHandler *RequestHandler
 
 	// Runtime state
 	running    bool
@@ -92,6 +93,9 @@ func New(config *Config, encEngine *crypto.EncryptionEngine, kmsClient kms.KMSCl
 			StartTime: time.Now(),
 		},
 	}
+
+	// Create request handler
+	agent.requestHandler = NewRequestHandler(agent, policyEngine)
 
 	return agent, nil
 }
@@ -413,16 +417,67 @@ func (w *Worker) run() {
 
 // processRequests handles incoming requests from the kernel module
 func (w *Worker) processRequests() error {
-	// TODO: Implement actual request processing
-	// This would:
-	// 1. Receive requests from netlink client
-	// 2. Process policy checks, encryption/decryption
-	// 3. Send responses back to kernel
+	ctx, cancel := context.WithTimeout(w.ctx, w.agent.config.RequestTimeout)
+	defer cancel()
 
-	logrus.WithField("worker_id", w.id).Debug("Processing requests (placeholder)")
+	// Receive message from netlink client
+	netlinkMsg, err := w.agent.netlinkClient.ReceiveMessage(w.agent.config.RequestTimeout)
+	if err != nil {
+		// No message available or timeout - this is normal
+		time.Sleep(10 * time.Millisecond)
+		return nil
+	}
 
-	// Simulate work
-	time.Sleep(100 * time.Millisecond)
+	// Parse the netlink message
+	msg, err := netlink.DeserializeMessage(netlinkMsg.Data)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"worker_id": w.id,
+			"error":     err,
+		}).Error("Failed to parse netlink message")
+		return nil
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"worker_id": w.id,
+		"operation": msg.Header.Operation,
+		"sequence":  msg.Header.Sequence,
+		"data_len":  msg.Header.DataLen,
+	}).Debug("Received netlink message")
+
+	// Process the message using the request handler
+	response, err := w.agent.requestHandler.ProcessMessage(ctx, msg)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"worker_id": w.id,
+			"sequence":  msg.Header.Sequence,
+			"error":     err,
+		}).Error("Failed to process request")
+
+		// Send error response
+		if errorResp, respErr := netlink.SerializeResponse(msg.Header.Sequence, 
+			msg.Header.Operation, netlink.TAKAKRYPT_STATUS_ERROR, []byte(err.Error())); respErr == nil {
+			response = errorResp
+		}
+	}
+
+	// Send response back to kernel
+	if response != nil {
+		responseMsg := &netlink.Message{
+			Type:      msg.Header.Operation,
+			Sequence:  msg.Header.Sequence,
+			Data:      response,
+			Timestamp: time.Now(),
+		}
+		if err := w.agent.netlinkClient.SendMessage(responseMsg); err != nil {
+			logrus.WithFields(logrus.Fields{
+				"worker_id": w.id,
+				"sequence":  msg.Header.Sequence,
+				"error":     err,
+			}).Error("Failed to send response")
+			return err
+		}
+	}
 
 	return nil
 }

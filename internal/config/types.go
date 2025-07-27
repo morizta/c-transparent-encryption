@@ -4,13 +4,17 @@ import "time"
 
 // Config represents the main configuration structure
 type Config struct {
-	GuardPoints []GuardPoint          `yaml:"guard_points"`
-	Policies    map[string]Policy     `yaml:"policies"`
-	UserSets    map[string]UserSet    `yaml:"user_sets"`
-	ProcessSets map[string]ProcessSet `yaml:"process_sets"`
-	ResourceSets map[string]ResourceSet `yaml:"resource_sets"`
-	KMS         KMSConfig             `yaml:"kms"`
-	Agent       AgentConfig           `yaml:"agent"`
+	Name           string                `yaml:"name,omitempty"`           // Policy configuration name
+	Version        int                   `yaml:"version,omitempty"`        // Configuration version
+	GuardPoints    []GuardPoint          `yaml:"guard_points"`
+	Policies       map[string]Policy     `yaml:"policies"`
+	PoliciesV2     []PolicyV2            `yaml:"policies_v2,omitempty"`    // New v2 policies with security rules
+	SecurityRules  []SecurityRule        `yaml:"security_rules,omitempty"` // Global security rules
+	UserSets       map[string]UserSet    `yaml:"user_sets"`
+	ProcessSets    map[string]ProcessSet `yaml:"process_sets"`
+	ResourceSets   map[string]ResourceSet `yaml:"resource_sets"`
+	KMS            KMSConfig             `yaml:"kms"`
+	Agent          AgentConfig           `yaml:"agent"`
 }
 
 // GuardPoint defines a protected directory or file pattern

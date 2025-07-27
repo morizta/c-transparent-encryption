@@ -1,0 +1,518 @@
+# Comprehensive Process Sets Configuration
+# Shows all types of processes that can be detected and controlled
+
+name: "comprehensive_process_protection"
+version: 2
+
+# Process Sets for Different Application Types
+process_sets:
+  # =============================================================================
+  # DATABASE PROCESSES (Already implemented)
+  # =============================================================================
+  mysql_processes:
+    name: "mysql_processes"
+    processes: ["mysqld", "mariadbd", "mysql"]
+    process_types: ["mysql", "mariadb"]
+    database_rules:
+      - database_types: ["mysql", "mariadb"]
+        listen_ports: [3306, 3307]
+
+  postgresql_processes:
+    name: "postgresql_processes"  
+    processes: ["postgres", "postmaster"]
+    process_types: ["postgresql"]
+
+  # =============================================================================
+  # WEB SERVER PROCESSES
+  # =============================================================================
+  apache_processes:
+    name: "apache_processes"
+    processes: 
+      - "apache2"
+      - "httpd"
+      - "apache"
+    process_paths:
+      - "/usr/sbin/apache2"
+      - "/usr/sbin/httpd"
+      - "/opt/apache/bin/httpd"
+    process_types: ["webserver"]
+    children_of: ["apache2", "httpd"]  # Include worker processes
+    require_all: false
+
+  nginx_processes:
+    name: "nginx_processes"
+    processes: ["nginx"]
+    process_paths:
+      - "/usr/sbin/nginx"
+      - "/opt/nginx/sbin/nginx"
+    process_types: ["webserver"]
+    children_of: ["nginx"]  # Include worker processes
+
+  # =============================================================================
+  # APPLICATION SERVER PROCESSES
+  # =============================================================================
+  java_applications:
+    name: "java_applications"
+    processes: 
+      - "java"
+      - "javaw"
+      - "tomcat"
+      - "catalina"
+    process_paths:
+      - "*/bin/java"
+      - "*/jre/bin/java"
+      - "*/tomcat*/bin/catalina.sh"
+    process_types: ["user_app"]
+    # Match any Java process with specific JVM arguments
+    command_patterns:
+      - "-Dcatalina.base="
+      - "-Dspring.profiles.active="
+      - "-jar *.war"
+      - "-jar *.jar"
+
+  nodejs_applications:
+    name: "nodejs_applications"
+    processes: 
+      - "node"
+      - "nodejs"
+      - "npm"
+      - "yarn"
+    process_paths:
+      - "/usr/bin/node"
+      - "/usr/local/bin/node"
+      - "*/node_modules/.bin/*"
+
+  python_applications:
+    name: "python_applications"
+    processes:
+      - "python"
+      - "python3"
+      - "gunicorn"
+      - "uwsgi"
+      - "celery"
+    process_paths:
+      - "/usr/bin/python*"
+      - "/opt/python*/bin/python*"
+      - "*/venv/bin/python*"
+
+  # =============================================================================
+  # DOCKER & CONTAINER PROCESSES
+  # =============================================================================
+  docker_processes:
+    name: "docker_processes"
+    processes:
+      - "dockerd"
+      - "docker"
+      - "containerd"
+      - "runc"
+      - "docker-proxy"
+    process_paths:
+      - "/usr/bin/dockerd"
+      - "/usr/bin/docker"
+      - "/usr/bin/containerd"
+    process_types: ["system"]
+    children_of: ["dockerd", "containerd"]
+
+  kubernetes_processes:
+    name: "kubernetes_processes"
+    processes:
+      - "kubelet"
+      - "kube-proxy"
+      - "kube-apiserver"
+      - "kube-controller-manager"
+      - "kube-scheduler"
+      - "etcd"
+    process_types: ["system"]
+
+  # =============================================================================
+  # MESSAGING & QUEUE PROCESSES
+  # =============================================================================
+  rabbitmq_processes:
+    name: "rabbitmq_processes"
+    processes:
+      - "rabbitmq-server"
+      - "beam.smp"  # Erlang VM for RabbitMQ
+    process_paths:
+      - "/usr/sbin/rabbitmq-server"
+      - "/opt/rabbitmq/sbin/rabbitmq-server"
+    environment_vars:
+      - "RABBITMQ_HOME"
+      - "RABBITMQ_CONFIG_FILE"
+
+  kafka_processes:
+    name: "kafka_processes"
+    processes: ["kafka"]
+    process_paths:
+      - "*/kafka*/bin/kafka-server-start.sh"
+      - "*/kafka*/bin/kafka-console-*"
+    command_patterns:
+      - "kafka.Kafka"
+      - "server.properties"
+
+  # =============================================================================
+  # CACHE & SEARCH PROCESSES  
+  # =============================================================================
+  elasticsearch_processes:
+    name: "elasticsearch_processes"
+    processes: ["elasticsearch"]
+    process_paths:
+      - "/usr/share/elasticsearch/bin/elasticsearch"
+      - "/opt/elasticsearch/bin/elasticsearch"
+    command_patterns:
+      - "org.elasticsearch.bootstrap.Elasticsearch"
+
+  memcached_processes:
+    name: "memcached_processes"
+    processes: ["memcached"]
+    process_paths:
+      - "/usr/bin/memcached"
+      - "/opt/memcached/bin/memcached"
+
+  # =============================================================================
+  # SECURITY & MONITORING PROCESSES
+  # =============================================================================
+  security_tools:
+    name: "security_tools"
+    processes:
+      - "fail2ban"
+      - "ossec"
+      - "wazuh"
+      - "auditd"
+      - "rsyslog"
+      - "filebeat"
+      - "metricbeat"
+    process_types: ["system"]
+
+  antivirus_processes:
+    name: "antivirus_processes"
+    processes:
+      - "clamd"
+      - "freshclam"
+      - "clamav"
+      - "sophos"
+      - "mcafee"
+    process_types: ["system"]
+
+  # =============================================================================
+  # SYSTEM & ADMIN PROCESSES
+  # =============================================================================
+  system_critical:
+    name: "system_critical"
+    processes:
+      - "systemd"
+      - "init"
+      - "kernel"
+      - "ksoftirqd"
+      - "migration"
+      - "rcu_"
+    pids: [1, 2]  # init and kthreadd
+    process_types: ["system"]
+
+  ssh_processes:
+    name: "ssh_processes"
+    processes:
+      - "sshd"
+      - "ssh"
+      - "sftp"
+      - "scp"
+    process_paths:
+      - "/usr/sbin/sshd"
+      - "/usr/bin/ssh"
+    children_of: ["sshd"]  # Include SSH sessions
+
+  backup_processes:
+    name: "backup_processes"
+    processes:
+      - "rsync"
+      - "tar"
+      - "gzip"
+      - "mysqldump"
+      - "pg_dump"
+      - "bacula"
+      - "amanda"
+    process_types: ["system", "user_app"]
+
+  # =============================================================================
+  # DEVELOPMENT TOOLS
+  # =============================================================================
+  development_tools:
+    name: "development_tools"
+    processes:
+      - "git"
+      - "svn"
+      - "gcc"
+      - "make"
+      - "cmake"
+      - "gradle"
+      - "maven"
+      - "npm"
+      - "pip"
+    process_types: ["user_app"]
+
+  ide_processes:
+    name: "ide_processes"
+    processes:
+      - "code"        # VS Code
+      - "idea"        # IntelliJ IDEA
+      - "eclipse"     # Eclipse
+      - "vim"
+      - "emacs"
+      - "nano"
+    command_patterns:
+      - "--extensions-dir"
+      - "--user-data-dir"
+
+  # =============================================================================
+  # FILE SHARING & SYNC PROCESSES
+  # =============================================================================
+  file_sync_processes:
+    name: "file_sync_processes"
+    processes:
+      - "dropbox"
+      - "googledrive"
+      - "onedrive"
+      - "syncthing"
+      - "nextcloud"
+    process_types: ["user_app"]
+
+  ftp_processes:
+    name: "ftp_processes"
+    processes:
+      - "vsftpd"
+      - "proftpd"
+      - "pure-ftpd"
+      - "sftp-server"
+    process_types: ["system"]
+
+  # =============================================================================
+  # MEDIA & CONTENT PROCESSES
+  # =============================================================================
+  media_processes:
+    name: "media_processes"
+    processes:
+      - "ffmpeg"
+      - "vlc"
+      - "gstreamer"
+      - "pulseaudio"
+      - "alsa"
+    process_types: ["user_app"]
+
+  # =============================================================================
+  # SHELL & TERMINAL PROCESSES
+  # =============================================================================
+  shell_processes:
+    name: "shell_processes"
+    processes:
+      - "bash"
+      - "sh"
+      - "zsh"
+      - "fish"
+      - "csh"
+      - "tcsh"
+    process_types: ["shell"]
+    # Include common shell spawned processes
+    children_of: ["bash", "sh", "zsh"]
+
+  terminal_processes:
+    name: "terminal_processes"
+    processes:
+      - "gnome-terminal"
+      - "xterm"
+      - "konsole"
+      - "terminator"
+      - "tmux"
+      - "screen"
+    process_types: ["user_app"]
+
+  # =============================================================================
+  # NETWORK & COMMUNICATION PROCESSES
+  # =============================================================================
+  network_tools:
+    name: "network_tools"
+    processes:
+      - "netstat"
+      - "ss"
+      - "iftop"
+      - "tcpdump"
+      - "wireshark"
+      - "nmap"
+      - "curl"
+      - "wget"
+    process_types: ["system", "user_app"]
+
+  vpn_processes:
+    name: "vpn_processes"
+    processes:
+      - "openvpn"
+      - "wireguard"
+      - "strongswan"
+      - "ppp"
+    process_types: ["system"]
+
+  # =============================================================================
+  # CUSTOM APPLICATION CATEGORIES
+  # =============================================================================
+  custom_enterprise_app:
+    name: "custom_enterprise_app"
+    processes:
+      - "myapp"
+      - "enterprise-suite"
+    process_paths:
+      - "/opt/mycompany/bin/*"
+      - "/usr/local/enterprise/*"
+    environment_vars:
+      - "MYAPP_HOME"
+      - "ENTERPRISE_CONFIG"
+    command_patterns:
+      - "--config=/etc/myapp"
+      - "--enterprise-mode"
+
+  # =============================================================================
+  # PROCESS HIERARCHIES & RELATIONSHIPS
+  # =============================================================================
+  web_stack_full:
+    name: "web_stack_full"
+    # This includes all processes in a typical web stack
+    processes: 
+      - "nginx"
+      - "apache2"
+      - "php-fpm"
+      - "node"
+      - "gunicorn"
+    children_of: 
+      - "nginx"       # Nginx worker processes
+      - "apache2"     # Apache worker processes
+      - "php-fpm"     # PHP-FPM worker processes
+    process_types: ["webserver", "user_app"]
+    require_all: false  # OR logic - any match counts
+
+  database_stack_full:
+    name: "database_stack_full"
+    # All database-related processes
+    process_types: ["mysql", "postgresql", "mongodb", "redis"]
+    processes:
+      - "mysqld"
+      - "postgres"
+      - "mongod"
+      - "redis-server"
+    children_of:
+      - "mysqld"
+      - "postgres"
+    require_all: false
+
+# =============================================================================
+# RESOURCE SETS FOR DIFFERENT APPLICATION DATA
+# =============================================================================
+resource_sets:
+  web_content:
+    name: "web_content"
+    directories:
+      - "/var/www"
+      - "/usr/share/nginx"
+      - "/opt/apache/htdocs"
+    extensions: [".html", ".css", ".js", ".php"]
+
+  application_logs:
+    name: "application_logs"
+    directories:
+      - "/var/log/apache2"
+      - "/var/log/nginx"
+      - "/var/log/mysql"
+      - "/var/log/postgresql"
+      - "/opt/*/logs"
+    extensions: [".log", ".err"]
+
+  config_files:
+    name: "config_files"
+    directories:
+      - "/etc"
+      - "/opt/*/conf"
+      - "/usr/local/*/config"
+    extensions: [".conf", ".cfg", ".ini", ".yaml", ".yml", ".json"]
+
+  user_data:
+    name: "user_data"
+    directories:
+      - "/home/*/Documents"
+      - "/home/*/Downloads"
+      - "/Users/*/Documents"
+    extensions: [".doc", ".docx", ".pdf", ".xls", ".xlsx"]
+
+  source_code:
+    name: "source_code"
+    directories:
+      - "/opt/src"
+      - "/home/*/dev"
+      - "/var/lib/git"
+    extensions: [".c", ".cpp", ".java", ".py", ".js", ".go", ".rs"]
+
+# =============================================================================
+# SECURITY RULES FOR DIFFERENT PROCESS TYPES
+# =============================================================================
+security_rules:
+  # Web server processes can access web content
+  - order: 1
+    resource_set: "web_content"
+    process_set: "apache_processes"
+    actions: ["f_rd", "f_wr", "f_cre"]
+    effects: ["permit", "audit"]
+    description: "Apache can access web content"
+
+  - order: 2
+    resource_set: "web_content"
+    process_set: "nginx_processes"
+    actions: ["f_rd"]
+    effects: ["permit", "audit"]
+    description: "Nginx can read web content"
+
+  # Database processes need full access to their data
+  - order: 3
+    resource_set: "mysql_data"
+    process_set: "mysql_processes"
+    actions: ["all_ops"]
+    effects: ["permit", "applykey", "audit"]
+    description: "MySQL processes access data with encryption"
+
+  # System processes have limited access
+  - order: 4
+    resource_set: "config_files"
+    process_set: "system_critical"
+    actions: ["f_rd", "f_rd_att"]
+    effects: ["permit", "audit"]
+    description: "System processes can read config files"
+
+  # Development tools access source code
+  - order: 5
+    resource_set: "source_code"
+    process_set: "development_tools"
+    actions: ["f_rd", "f_wr", "f_cre", "f_rm"]
+    effects: ["permit", "audit"]
+    description: "Development tools access source code"
+
+  # Shell processes have restricted access
+  - order: 6
+    process_set: "shell_processes"
+    actions: ["f_rd", "f_rd_att", "d_rd"]
+    effects: ["permit", "audit"]
+    description: "Shell processes have read access"
+
+  # Security tools need special permissions
+  - order: 7
+    resource_set: "application_logs"
+    process_set: "security_tools"
+    actions: ["f_rd", "f_rd_att"]
+    effects: ["permit", "audit"]
+    description: "Security tools can read logs"
+
+  # Block unauthorized access to sensitive data
+  - order: 98
+    resource_set: "user_data"
+    actions: ["all_ops"]
+    effects: ["deny", "audit"]
+    description: "Default deny access to user data"
+
+  # Final catch-all rule
+  - order: 99
+    actions: ["all_ops"]
+    effects: ["permit"]
+    description: "Default allow other operations"

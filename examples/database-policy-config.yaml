@@ -1,0 +1,425 @@
+# Takakrypt Database Protection Configuration
+# This example shows how to configure protection for database processes
+# with granular process set detection and enhanced security rules
+
+name: "database_protection_policy"
+version: 2
+
+# Enhanced Process Sets with Database Detection
+process_sets:
+  # MySQL/MariaDB Process Detection
+  mysql_servers:
+    name: "mysql_servers"
+    processes:
+      - "mysqld"
+      - "mariadbd"
+      - "mysql-server"
+    process_paths:
+      - "/usr/sbin/mysqld"
+      - "/usr/bin/mysqld"
+      - "/usr/sbin/mariadbd"
+      - "/opt/mysql/bin/mysqld"
+    database_rules:
+      - database_types: ["mysql", "mariadb"]
+        listen_ports: [3306, 3307]
+        environment_vars: ["MYSQL_ROOT_PASSWORD", "MYSQL_DATABASE"]
+        data_paths: ["/var/lib/mysql", "/data/mysql"]
+    process_types: ["mysql", "mariadb"]
+    require_all: false
+
+  # PostgreSQL Process Detection
+  postgresql_servers:
+    name: "postgresql_servers"
+    processes:
+      - "postgres"
+      - "postmaster"
+    process_paths:
+      - "/usr/bin/postgres"
+      - "/usr/lib/postgresql/*/bin/postgres"
+    database_rules:
+      - database_types: ["postgresql"]
+        listen_ports: [5432, 5433]
+        environment_vars: ["POSTGRES_PASSWORD", "PGDATA"]
+        data_paths: ["/var/lib/postgresql", "/data/postgresql"]
+    process_types: ["postgresql"]
+    require_all: false
+
+  # MongoDB Process Detection
+  mongodb_servers:
+    name: "mongodb_servers"
+    processes:
+      - "mongod"
+      - "mongodb"
+    process_paths:
+      - "/usr/bin/mongod"
+      - "/opt/mongodb/bin/mongod"
+    database_rules:
+      - database_types: ["mongodb"]
+        listen_ports: [27017, 27018, 27019]
+        environment_vars: ["MONGO_INITDB_ROOT_USERNAME"]
+        data_paths: ["/var/lib/mongodb", "/data/db"]
+    process_types: ["mongodb"]
+    require_all: false
+
+  # Redis Process Detection
+  redis_servers:
+    name: "redis_servers"
+    processes:
+      - "redis-server"
+      - "redis"
+    process_paths:
+      - "/usr/bin/redis-server"
+      - "/opt/redis/bin/redis-server"
+    database_rules:
+      - database_types: ["redis"]
+        listen_ports: [6379, 6380]
+        data_paths: ["/var/lib/redis", "/data/redis"]
+    process_types: ["redis"]
+    require_all: false
+
+  # All Database Processes (catch-all)
+  all_database_processes:
+    name: "all_database_processes"
+    process_types: ["mysql", "postgresql", "mariadb", "mongodb", "redis", "oracle"]
+    require_all: false
+
+  # Database Administrator Users
+  database_admins:
+    name: "database_admins"
+    processes:
+      - "mysql"
+      - "psql"
+      - "mongosh"
+      - "redis-cli"
+    children_of:
+      - "mysql"
+      - "psql"
+      - "mongo"
+    require_all: false
+
+# User Sets for Database Access Control
+user_sets:
+  mysql_users:
+    name: "mysql_users"
+    users: ["mysql", "mysqladmin"]
+    groups: ["mysql", "database"]
+    uids: [999] # Common MySQL UID
+
+  postgresql_users:
+    name: "postgresql_users" 
+    users: ["postgres", "postgresql"]
+    groups: ["postgres", "database"]
+    uids: [998] # Common PostgreSQL UID
+
+  mongodb_users:
+    name: "mongodb_users"
+    users: ["mongodb", "mongod"]
+    groups: ["mongodb", "database"]
+    uids: [997] # Common MongoDB UID
+
+  database_admins:
+    name: "database_admins"
+    users: ["root", "dbadmin"]
+    groups: ["wheel", "sudo", "dba"]
+
+# Resource Sets for Database Data Protection
+resource_sets:
+  mysql_data:
+    name: "mysql_data"
+    directories:
+      - "/var/lib/mysql"
+      - "/data/mysql"
+      - "/opt/mysql/data"
+    file_patterns:
+      - "*.frm"
+      - "*.ibd"
+      - "*.MYD"
+      - "*.MYI"
+      - "*.ib_logfile*"
+      - "ibdata*"
+    extensions:
+      - ".frm"
+      - ".ibd"
+      - ".MYD"
+      - ".MYI"
+
+  postgresql_data:
+    name: "postgresql_data"
+    directories:
+      - "/var/lib/postgresql"
+      - "/data/postgresql"
+      - "/usr/local/pgsql/data"
+    file_patterns:
+      - "base/*"
+      - "global/*"
+      - "pg_wal/*"
+      - "pg_xlog/*"
+    extensions:
+      - ".dat"
+
+  mongodb_data:
+    name: "mongodb_data"
+    directories:
+      - "/var/lib/mongodb"
+      - "/data/db"
+      - "/data/mongodb"
+    file_patterns:
+      - "*.bson"
+      - "*.wt"
+      - "WiredTiger*"
+      - "journal/*"
+    extensions:
+      - ".bson"
+      - ".wt"
+
+  redis_data:
+    name: "redis_data"
+    directories:
+      - "/var/lib/redis"
+      - "/data/redis"
+    file_patterns:
+      - "dump.rdb"
+      - "appendonly.aof"
+      - "*.rdb"
+      - "*.aof"
+
+  database_config:
+    name: "database_config"
+    directories:
+      - "/etc/mysql"
+      - "/etc/postgresql"
+      - "/etc/mongod.conf"
+      - "/etc/redis"
+    file_patterns:
+      - "my.cnf"
+      - "postgresql.conf"
+      - "mongod.conf"
+      - "redis.conf"
+    extensions:
+      - ".cnf"
+      - ".conf"
+
+# Guard Points for Database Protection
+guard_points:
+  - name: "mysql_data_protection"
+    path: "/var/lib/mysql"
+    recursive: true
+    policy: "mysql_encryption_policy"
+    enabled: true
+    process_whitelist: []
+
+  - name: "postgresql_data_protection"
+    path: "/var/lib/postgresql"
+    recursive: true
+    policy: "postgresql_encryption_policy"
+    enabled: true
+
+  - name: "mongodb_data_protection"
+    path: "/var/lib/mongodb"
+    recursive: true
+    policy: "mongodb_encryption_policy"
+    enabled: true
+
+  - name: "database_config_protection"
+    path: "/etc"
+    recursive: true
+    policy: "database_config_policy"
+    enabled: true
+    include_patterns:
+      - "my.cnf"
+      - "postgresql.conf"
+      - "mongod.conf"
+      - "redis.conf"
+
+# Security Rules with Database-Specific Permissions
+security_rules:
+  # Rule 1: Allow database processes full access to their data with encryption
+  - order: 1
+    resource_set: "mysql_data"
+    process_set: "mysql_servers"
+    actions: ["all_ops"]
+    effects: ["permit", "applykey", "audit"]
+    description: "MySQL servers can access MySQL data with encryption"
+
+  - order: 2
+    resource_set: "postgresql_data"
+    process_set: "postgresql_servers"
+    actions: ["all_ops"]
+    effects: ["permit", "applykey", "audit"]
+    description: "PostgreSQL servers can access PostgreSQL data with encryption"
+
+  - order: 3
+    resource_set: "mongodb_data"
+    process_set: "mongodb_servers"
+    actions: ["all_ops"]
+    effects: ["permit", "applykey", "audit"]
+    description: "MongoDB servers can access MongoDB data with encryption"
+
+  # Rule 4: Database administrators can read/write with encryption
+  - order: 4
+    resource_set: "mysql_data"
+    user_set: "database_admins"
+    process_set: "database_admins"
+    actions: ["f_rd", "f_wr", "f_rd_att"]
+    effects: ["permit", "applykey", "audit"]
+    description: "Database admins can access MySQL data"
+
+  - order: 5
+    resource_set: "postgresql_data"
+    user_set: "database_admins"
+    process_set: "database_admins"
+    actions: ["f_rd", "f_wr", "f_rd_att"]
+    effects: ["permit", "applykey", "audit"]
+    description: "Database admins can access PostgreSQL data"
+
+  # Rule 6: Database users can only read their specific data
+  - order: 6
+    resource_set: "mysql_data"
+    user_set: "mysql_users"
+    actions: ["f_rd", "f_rd_att"]
+    effects: ["permit", "applykey", "audit"]
+    description: "MySQL users can read MySQL data"
+
+  - order: 7
+    resource_set: "postgresql_data"
+    user_set: "postgresql_users"
+    actions: ["f_rd", "f_rd_att"]
+    effects: ["permit", "applykey", "audit"]
+    description: "PostgreSQL users can read PostgreSQL data"
+
+  # Rule 8: Protect configuration files - admins only
+  - order: 8
+    resource_set: "database_config"
+    user_set: "database_admins"
+    actions: ["f_rd", "f_wr", "f_chg_att"]
+    effects: ["permit", "applykey", "audit"]
+    description: "Database admins can manage config files"
+
+  # Rule 9: Block unauthorized access to database data
+  - order: 9
+    resource_set: "mysql_data"
+    actions: ["all_ops"]
+    effects: ["deny", "audit"]
+    description: "Deny unauthorized access to MySQL data"
+
+  - order: 10
+    resource_set: "postgresql_data"
+    actions: ["all_ops"]
+    effects: ["deny", "audit"]
+    description: "Deny unauthorized access to PostgreSQL data"
+
+  - order: 11
+    resource_set: "mongodb_data"
+    actions: ["all_ops"]
+    effects: ["deny", "audit"]
+    description: "Deny unauthorized access to MongoDB data"
+
+# Policies for Database Encryption
+policies:
+  mysql_encryption_policy:
+    name: "mysql_encryption_policy"
+    type: "live_data_transformation"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    enabled: true
+    user_sets: ["mysql_users", "database_admins"]
+    process_sets: ["mysql_servers"]
+    resource_sets: ["mysql_data"]
+    require_all_sets: false
+    key_rotation_interval: "24h"
+    audit_level: "full"
+
+  postgresql_encryption_policy:
+    name: "postgresql_encryption_policy"
+    type: "live_data_transformation"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    enabled: true
+    user_sets: ["postgresql_users", "database_admins"]
+    process_sets: ["postgresql_servers"]
+    resource_sets: ["postgresql_data"]
+    require_all_sets: false
+    key_rotation_interval: "24h"
+    audit_level: "full"
+
+  mongodb_encryption_policy:
+    name: "mongodb_encryption_policy"
+    type: "live_data_transformation"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    enabled: true
+    user_sets: ["mongodb_users", "database_admins"]
+    process_sets: ["mongodb_servers"]
+    resource_sets: ["mongodb_data"]
+    require_all_sets: false
+    key_rotation_interval: "24h"
+    audit_level: "full"
+
+  database_config_policy:
+    name: "database_config_policy"
+    type: "live_data_transformation"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    enabled: true
+    user_sets: ["database_admins"]
+    resource_sets: ["database_config"]
+    require_all_sets: true
+    key_rotation_interval: "168h" # Weekly
+    audit_level: "full"
+
+# V2 Policies with Enhanced Security Rules
+policies_v2:
+  - name: "mysql_protection_v2"
+    type: "live_data_transformation"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    enabled: true
+    version: 2
+    key_version: 1
+    key_rotation_interval: "24h"
+    audit_level: "full"
+    security_rules:
+      - order: 1
+        resource_set: "mysql_data"
+        process_set: "mysql_servers"
+        actions: ["all_ops"]
+        effects: ["permit", "applykey", "audit"]
+        description: "MySQL servers full access with encryption"
+      - order: 2
+        resource_set: "mysql_data"
+        user_set: "database_admins"
+        actions: ["f_rd", "f_wr"]
+        effects: ["permit", "applykey", "audit"]
+        description: "Database admins limited access"
+      - order: 99
+        actions: ["all_ops"]
+        effects: ["deny", "audit"]
+        description: "Default deny all other access"
+
+# KMS Configuration for Database Keys
+kms:
+  provider: "file" # or "aws", "vault", etc.
+  config:
+    key_directory: "/etc/takakrypt/keys"
+    backup_directory: "/etc/takakrypt/keys/backup"
+  key_rotation:
+    enabled: true
+    schedule: "0 2 * * *" # Daily at 2 AM
+    retention_days: 90
+
+# Audit Configuration
+audit:
+  enabled: true
+  level: "full"
+  destinations:
+    - type: "file"
+      path: "/var/log/takakrypt/database-audit.log"
+      format: "json"
+    - type: "syslog"
+      facility: "auth"
+      format: "standard"
+  filters:
+    - action: "include"
+      resource_patterns: ["*/mysql/*", "*/postgresql/*", "*/mongodb/*"]
+    - action: "include"
+      effects: ["deny", "audit"]
