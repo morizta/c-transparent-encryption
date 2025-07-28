@@ -155,8 +155,8 @@ int takakryptfs_send_decrypt_request(const char *key_id, const void *ciphertext,
     void *req_buf, *resp_buf;
     int ret;
     
-    takakryptfs_debug("Sending decrypt request: key_id='%s', data_len=%zu\n", 
-                      key_id, ciphertext_len);
+    takakryptfs_info("TAKAKRYPTFS_CRYPTO: Sending decrypt request: key_id='%s', data_len=%zu\n", 
+                     key_id, ciphertext_len);
     
     /* Validate inputs */
     if (!key_id || key_id_len > TAKAKRYPT_MAX_KEY_ID_LEN) {
@@ -195,8 +195,10 @@ int takakryptfs_send_decrypt_request(const char *key_id, const void *ciphertext,
            ciphertext, ciphertext_len);
     
     /* Send request and wait for response */
+    takakryptfs_info("TAKAKRYPTFS_CRYPTO: Calling takakrypt_send_request_and_wait\n");
     ret = takakrypt_send_request_and_wait(&request->header, request_size, 
                                           resp_buf, response_size);
+    takakryptfs_info("TAKAKRYPTFS_CRYPTO: takakrypt_send_request_and_wait returned %d\n", ret);
     if (ret) {
         takakryptfs_error("Failed to send decrypt request: %d\n", ret);
         kfree(req_buf);

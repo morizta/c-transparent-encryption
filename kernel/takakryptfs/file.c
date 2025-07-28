@@ -261,6 +261,8 @@ ssize_t takakryptfs_read_iter(struct kiocb *iocb, struct iov_iter *iter)
         }
         
         /* Decrypt the data */
+        takakryptfs_info("TAKAKRYPTFS: Starting decryption, buffer_size=%zd, key_id=%s\n", 
+                         ret, inode_info->key_id);
         ret = takakryptfs_decrypt_data(buffer, ret, inode_info->key_id,
                                        &decrypted, &decrypted_len);
         kfree(buffer);
@@ -269,6 +271,7 @@ ssize_t takakryptfs_read_iter(struct kiocb *iocb, struct iov_iter *iter)
             takakryptfs_error("Failed to decrypt data: %zd\n", ret);
             return ret;
         }
+        takakryptfs_info("TAKAKRYPTFS: Decryption complete, decrypted_len=%zu\n", decrypted_len);
         
         /* Copy decrypted data to user buffer */
         ret = copy_to_iter(decrypted, decrypted_len, iter);
