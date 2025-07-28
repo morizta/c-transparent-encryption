@@ -79,7 +79,6 @@ Thumbs.db
 
 # Test artifacts
 /opt/takakrypt-test/
-test-*.yaml
 test-*.txt
 *.test-*
 

@@ -1,0 +1,218 @@
+# Takakrypt Test Configuration
+# Uses actual system users: ntoi, testuser1, testuser2
+
+# Guard Points - Define protected directories
+guard_points:
+  - name: "test_encryption"
+    path: "/tmp/takakrypt-user-test"
+    recursive: true
+    policy: "test_policy"
+    include_patterns:
+      - "*.txt"
+      - "*.doc"
+      - "*.pdf"
+    exclude_patterns:
+      - "*.log"
+      - "*.tmp"
+    enabled: true
+    
+  - name: "user_documents"
+    path: "/home/*/Private"
+    recursive: true
+    policy: "user_policy"
+    include_patterns:
+      - "*"
+    enabled: true
+    
+  - name: "mariadb_data"
+    path: "/var/lib/mysql"
+    recursive: true
+    policy: "database_policy"
+    include_patterns:
+      - "*.ibd"
+      - "*.frm"
+      - "*.MYD"
+      - "*.MYI"
+      - "*test*.sql"
+    exclude_patterns:
+      - "*.log"
+      - "*.pid"
+      - "*.sock"
+    enabled: true
+
+# Encryption Policies
+policies:
+  test_policy:
+    name: "Test Encryption Policy"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    user_sets:
+      - "test_users"
+      - "admin_users"
+    require_all_sets: false  # OR logic - any user set match allows access
+    key_rotation_interval: "24h"
+    audit_level: "info"
+    enabled: true
+
+  user_policy:
+    name: "User Document Policy"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    user_sets:
+      - "all_users"
+    require_all_sets: false
+    key_rotation_interval: "12h"
+    audit_level: "debug"
+    enabled: true
+
+  database_policy:
+    name: "MariaDB Database Policy"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    user_sets:
+      - "database_users"
+      - "admin_users"
+    process_sets:
+      - "database_processes"
+    require_all_sets: false  # OR logic
+    key_rotation_interval: "6h"
+    audit_level: "info"
+    enabled: true
+
+# User Sets - Using actual system users
+user_sets:
+  admin_users:
+    name: "Administrator Users"
+    users:
+      - "ntoi"
+    uids:
+      - 1000
+    groups:
+      - "sudo"
+      - "adm"
+    description: "System administrators"
+
+  test_users:
+    name: "Test Users"
+    users:
+      - "testuser1"
+      - "testuser2"
+    uids:
+      - 1001
+      - 1002
+    groups:
+      - "fuse"
+    description: "Test user accounts"
+    
+  all_users:
+    name: "All Authorized Users"
+    users:
+      - "ntoi"
+      - "testuser1" 
+      - "testuser2"
+    uids:
+      - 1000
+      - 1001
+      - 1002
+    description: "All system users with access"
+    
+  database_users:
+    name: "Database Users"
+    users:
+      - "mysql"
+      - "mariadb"
+      - "ntoi"  # Admin access
+    uids:
+      - 999   # mysql user UID (typical)
+      - 998   # mariadb user UID (typical)  
+      - 1000  # Admin user
+    groups:
+      - "mysql"
+      - "mariadb"
+    description: "Users allowed to access database files"
+
+# Process Sets - Common applications
+process_sets:
+  common_apps:
+    name: "Common Applications"
+    processes:
+      - "vim"
+      - "nano"
+      - "cat"
+      - "less"
+      - "cp"
+      - "mv"
+    process_paths:
+      - "/usr/bin/vim*"
+      - "/bin/cat"
+      - "/bin/cp"
+    description: "Common text editors and file utilities"
+
+  database_processes:
+    name: "Database Processes"
+    processes:
+      - "mysqld"
+      - "mariadbd"
+      - "mysql"
+      - "mariadb"
+      - "mariadb-server"
+      - "mysqld_safe"
+    process_paths:
+      - "/usr/sbin/mysqld"
+      - "/usr/sbin/mariadbd"
+      - "/usr/bin/mysql*"
+      - "/usr/bin/mariadb*"
+    database_types:
+      - "mysql"
+      - "mariadb"
+    description: "MariaDB/MySQL database processes"
+
+# Resource Sets - File types
+resource_sets:
+  text_files:
+    name: "Text Files"
+    file_patterns:
+      - ".*\\.(txt|md|doc|pdf)$"
+    extensions:
+      - ".txt"
+      - ".md"
+      - ".doc"
+      - ".pdf"
+    description: "Text and document files"
+    
+  database_files:
+    name: "Database Files"
+    file_patterns:
+      - ".*\\.(ibd|frm|MYD|MYI|sql)$"
+    extensions:
+      - ".ibd"
+      - ".frm"
+      - ".MYD"
+      - ".MYI"
+      - ".sql"
+    directory_patterns:
+      - "/var/lib/mysql.*"
+      - "/var/lib/mariadb.*"
+    description: "MariaDB/MySQL database files"
+
+# KMS Configuration - Mock for testing
+kms:
+  endpoint: "mock://localhost"
+  auth_method: "token"
+  timeout: "5s"
+  retry_attempts: 2
+  key_cache_ttl: "30m"
+  policy_cache_ttl: "10m"
+
+# Agent Configuration
+agent:
+  socket_path: "/tmp/takakrypt-test.sock"
+  log_level: "debug"
+  log_path: "/tmp/takakrypt-agent.log"
+  audit_log_path: "/tmp/takakrypt-audit.log"
+  max_cache_size: 500
+  cache_cleanup_interval: "2m"
+  worker_threads: 2
+  max_request_size: 1048576  # 1MB
+  request_timeout: "10s"
+  enable_metrics: false
