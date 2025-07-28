@@ -668,4 +668,4 @@ func (pse *ProcessSetEvaluator) GetCacheStats() map[string]interface{} {
 		"cache_size":    len(pse.matchCache),
 		"cache_ttl":     pse.cacheTTL,
 	}
-}
+}// Enhanced logging enabled

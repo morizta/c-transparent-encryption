@@ -1,3 +1,5 @@
+/* Enhanced logging added for debugging */
+
 #include "takakrypt.h"
 
 /**
@@ -105,12 +107,13 @@ int takakrypt_check_policy(struct file *file, uint32_t operation)
     int ret;
     
     if (!file) {
+        takakrypt_error("POLICY_CHECK: NULL file pointer\n");
         return -EINVAL;
     }
     
     /* Check if module is active */
     if (!atomic_read(&takakrypt_global_state->module_active)) {
-        takakrypt_debug("Module not active, allowing operation\n");
+        takakrypt_debug("POLICY_CHECK: Module not active, allowing operation\n");
         return 0;
     }
     
@@ -318,46 +321,54 @@ ssize_t takakrypt_write_iter(struct kiocb *iocb, struct iov_iter *iter)
     /* Get file context */
     ctx = takakrypt_get_file_context(file);
     if (ctx) {
+        takakrypt_debug("WRITE_ITER: Got file context for write operation\n");
         /* Check if file should be encrypted */
         if (!ctx->policy_checked) {
+            takakrypt_info("WRITE_ITER: Policy not yet checked, querying encryption policy\n");
             /* Query policy engine to determine if encryption is needed */
             ret = takakrypt_query_policy_for_encryption(file, ctx);
             if (ret < 0) {
-                takakrypt_warn("Failed to query encryption policy, defaulting to encrypt\n");
+                takakrypt_warn("WRITE_ITER: Failed to query encryption policy, defaulting to encrypt\n");
                 ctx->encrypted = 1;
             } else {
                 ctx->encrypted = ret;
             }
             ctx->policy_checked = 1;
             strncpy(ctx->key_id, "policy-key-1", sizeof(ctx->key_id) - 1);
-            takakrypt_debug("Policy check complete: encrypted=%u, key_id=%s\n", 
+            takakrypt_info("WRITE_ITER: Policy check complete: encrypted=%u, key_id=%s\n", 
                            ctx->encrypted, ctx->key_id);
+        } else {
+            takakrypt_debug("WRITE_ITER: Policy already checked: encrypted=%u\n", ctx->encrypted);
         }
         
         if (ctx->encrypted) {
-            takakrypt_debug("File requires encryption, encrypting data\n");
+            takakrypt_info("WRITE_ITER: File requires encryption - STARTING ENCRYPTION PROCESS\n");
             
             /* Allocate buffer for original data */
             buffer = kmalloc(count, GFP_KERNEL);
             if (!buffer) {
-                takakrypt_error("Failed to allocate encryption buffer\n");
+                takakrypt_error("WRITE_ITER: Failed to allocate encryption buffer\n");
                 ret = -ENOMEM;
                 goto cleanup;
             }
             
             /* Copy data from iterator */
             if (copy_from_iter(buffer, count, iter) != count) {
-                takakrypt_error("Failed to copy data from iterator\n");
+                takakrypt_error("WRITE_ITER: Failed to copy data from iterator\n");
                 ret = -EFAULT;
                 goto cleanup;
             }
             
+            takakrypt_info("WRITE_ITER: About to encrypt %zu bytes with key %s\n", count, ctx->key_id);
+            
             /* Encrypt the data via agent */
             ret = takakrypt_encrypt_data(buffer, count, ctx->key_id, &encrypted_buffer);
             if (ret < 0) {
-                takakrypt_error("Encryption failed: %ld\n", ret);
+                takakrypt_error("WRITE_ITER: Encryption failed: %ld\n", ret);
                 goto cleanup;
             }
+            
+            takakrypt_info("WRITE_ITER: Encryption succeeded: %zu -> %ld bytes\n", count, ret);
             
             /* Create new iterator with encrypted data */
             iov_iter_kvec(iter, WRITE, &(struct kvec){encrypted_buffer, ret}, 1, ret);
@@ -366,8 +377,12 @@ ssize_t takakrypt_write_iter(struct kiocb *iocb, struct iov_iter *iter)
             takakrypt_global_state->stats.encryption_ops++;
             spin_unlock(&takakrypt_global_state->stats_lock);
             
-            takakrypt_debug("File encrypted successfully: %zu -> %zu bytes\n", count, ret);
+            takakrypt_info("WRITE_ITER: File encrypted successfully: %zu -> %ld bytes\n", count, ret);
+        } else {
+            takakrypt_info("WRITE_ITER: File does NOT require encryption - writing plaintext\n");
         }
+    } else {
+        takakrypt_debug("WRITE_ITER: No file context available - writing plaintext\n");
     }
     
     /* Call original write operation with (possibly encrypted) data */
@@ -554,28 +569,35 @@ int takakrypt_query_policy_for_encryption(struct file *file, struct takakrypt_fi
     char filepath[TAKAKRYPT_MAX_PATH_LEN];
     int ret;
     
+    takakrypt_debug("ENCRYPTION_POLICY: Starting policy query for encryption\n");
+    
     /* Get file path */
     ret = takakrypt_get_file_path(file, filepath, sizeof(filepath));
     if (ret) {
-        takakrypt_debug("Failed to get file path for policy query\n");
+        takakrypt_error("ENCRYPTION_POLICY: Failed to get file path for policy query: %d\n", ret);
         return ret;
     }
     
-    takakrypt_debug("Querying policy for file: %s\n", filepath);
+    takakrypt_info("ENCRYPTION_POLICY: Querying encryption policy for file: %s\n", filepath);
     
     /* TODO: Send netlink message to agent for policy evaluation */
     /* For now, implement simple logic based on file path */
     
     /* Check if file is in a test directory */
     if (strstr(filepath, "/tmp/takakrypt-test") != NULL) {
+        takakrypt_info("ENCRYPTION_POLICY: File is in test directory: %s\n", filepath);
         /* Check file extension */
         if (strstr(filepath, ".txt") != NULL || strstr(filepath, ".doc") != NULL) {
-            takakrypt_debug("File matches encryption policy: %s\n", filepath);
+            takakrypt_info("ENCRYPTION_POLICY: File matches encryption policy (txt/doc): %s - ENCRYPTING\n", filepath);
             return 1; /* Encrypt */
+        } else {
+            takakrypt_info("ENCRYPTION_POLICY: File extension does not match (no .txt/.doc): %s - NOT ENCRYPTING\n", filepath);
         }
+    } else {
+        takakrypt_info("ENCRYPTION_POLICY: File not in test directory: %s - NOT ENCRYPTING\n", filepath);
     }
     
-    takakrypt_debug("File does not match encryption policy: %s\n", filepath);
+    takakrypt_info("ENCRYPTION_POLICY: File does not match encryption policy: %s\n", filepath);
     return 0; /* Don't encrypt */
 }
 
@@ -590,30 +612,91 @@ int takakrypt_query_policy_for_encryption(struct file *file, struct takakrypt_fi
  */
 int takakrypt_encrypt_data(const char *data, size_t data_len, const char *key_id, char **encrypted_data)
 {
-    size_t encrypted_len;
-    char *encrypted_buf;
+    struct takakrypt_encrypt_request *request;
+    struct takakrypt_crypto_response *response;
+    size_t key_id_len = strlen(key_id);
+    size_t request_size, response_size;
+    void *req_buf, *resp_buf;
+    int ret;
     
-    takakrypt_debug("Encrypting %zu bytes with key %s\n", data_len, key_id);
+    takakrypt_info("ENCRYPT_DATA: Starting encryption of %zu bytes with key %s\n", data_len, key_id);
     
-    /* TODO: Send encryption request to agent via netlink */
-    /* For now, implement simple mock encryption (just copy + header) */
+    if (!data || !key_id || !encrypted_data) {
+        takakrypt_error("ENCRYPT_DATA: Invalid parameters\n");
+        return -EINVAL;
+    }
     
-    /* Allocate buffer for "encrypted" data (original + simple header) */
-    encrypted_len = data_len + 32; /* 32 bytes for mock header */
-    encrypted_buf = kmalloc(encrypted_len, GFP_KERNEL);
-    if (!encrypted_buf) {
-        takakrypt_error("Failed to allocate encryption buffer\n");
+    /* Allocate request buffer */
+    request_size = sizeof(struct takakrypt_encrypt_request) + key_id_len + data_len;
+    req_buf = kzalloc(request_size, GFP_KERNEL);
+    if (!req_buf) {
         return -ENOMEM;
     }
     
-    /* Mock encryption: add header + copy data */
-    snprintf(encrypted_buf, 32, "TAKAKRYPT_ENC_%s_", key_id);
-    memcpy(encrypted_buf + 32, data, data_len);
+    /* Allocate response buffer (max expected size) */
+    response_size = sizeof(struct takakrypt_crypto_response) + data_len + 200; /* Extra space for header/tag */
+    resp_buf = kzalloc(response_size, GFP_KERNEL);
+    if (!resp_buf) {
+        kfree(req_buf);
+        return -ENOMEM;
+    }
     
-    *encrypted_data = encrypted_buf;
+    /* Build request */
+    request = (struct takakrypt_encrypt_request *)req_buf;
+    request->header.magic = TAKAKRYPT_MSG_MAGIC;
+    request->header.version = TAKAKRYPT_PROTOCOL_VERSION;
+    request->header.operation = TAKAKRYPT_OP_ENCRYPT;
+    request->header.sequence = atomic_inc_return(&takakrypt_global_state->sequence_counter);
+    request->header.payload_size = key_id_len + data_len + 8; /* 8 bytes for lengths */
+    request->header.timestamp = ktime_get_real_seconds();
+    request->key_id_len = key_id_len;
+    request->data_len = data_len;
     
-    takakrypt_debug("Mock encryption complete: %zu -> %zu bytes\n", data_len, encrypted_len);
-    return encrypted_len;
+    /* Copy key ID and data */
+    memcpy(req_buf + sizeof(struct takakrypt_encrypt_request), key_id, key_id_len);
+    memcpy(req_buf + sizeof(struct takakrypt_encrypt_request) + key_id_len, data, data_len);
+    
+    takakrypt_info("ENCRYPT_DATA: Sending encryption request to agent, sequence=%u\n", request->header.sequence);
+    
+    /* Send request and wait for response */
+    ret = takakrypt_send_request_and_wait(&request->header, request_size, resp_buf, response_size);
+    if (ret) {
+        takakrypt_error("ENCRYPT_DATA: Failed to send encrypt request: %d\n", ret);
+        kfree(req_buf);
+        kfree(resp_buf);
+        return ret;
+    }
+    
+    takakrypt_info("ENCRYPT_DATA: Received encryption response from agent\n");
+    
+    /* Parse response */
+    response = (struct takakrypt_crypto_response *)resp_buf;
+    if (response->header.magic != TAKAKRYPT_MSG_MAGIC ||
+        response->header.operation != TAKAKRYPT_OP_ENCRYPT) {
+        takakrypt_error("ENCRYPT_DATA: Invalid encrypt response - magic=0x%x, operation=%u\n", 
+                       response->header.magic, response->header.operation);
+        kfree(req_buf);
+        kfree(resp_buf);
+        return -EINVAL;
+    }
+    
+    takakrypt_info("ENCRYPT_DATA: Valid encryption response received, data_len=%u\n", response->data_len);
+    
+    /* Allocate output buffer and copy encrypted data */
+    *encrypted_data = kmalloc(response->data_len, GFP_KERNEL);
+    if (!*encrypted_data) {
+        kfree(req_buf);
+        kfree(resp_buf);
+        return -ENOMEM;
+    }
+    
+    memcpy(*encrypted_data, resp_buf + sizeof(struct takakrypt_crypto_response), response->data_len);
+    
+    takakrypt_info("ENCRYPT_DATA: Encryption complete: %zu bytes -> %u bytes\n", data_len, response->data_len);
+    
+    kfree(req_buf);
+    kfree(resp_buf);
+    return response->data_len;
 }
 
 /**
@@ -627,38 +710,88 @@ int takakrypt_encrypt_data(const char *data, size_t data_len, const char *key_id
  */
 int takakrypt_decrypt_data(const char *encrypted_data, size_t data_len, const char *key_id, char **decrypted_data)
 {
-    size_t decrypted_len;
-    char *decrypted_buf;
-    char *plain_buf;
+    struct takakrypt_encrypt_request *request;
+    struct takakrypt_crypto_response *response;
+    size_t key_id_len = strlen(key_id);
+    size_t request_size, response_size;
+    void *req_buf, *resp_buf;
+    int ret;
     
     takakrypt_debug("Decrypting %zu bytes with key %s\n", data_len, key_id);
     
-    /* TODO: Send decryption request to agent via netlink */
-    /* For now, implement simple mock decryption (remove header) */
-    
-    /* Check if data has our mock encryption header */
-    if (data_len < 32 || strncmp(encrypted_data, "TAKAKRYPT_ENC_", 14) != 0) {
+    /* Check if data might be encrypted (has TAKA header) */
+    if (data_len < 4 || memcmp(encrypted_data, "TAKA", 4) != 0) {
         /* Data is not encrypted, return as-is */
-        plain_buf = kmalloc(data_len, GFP_KERNEL);
-        if (!plain_buf) {
+        *decrypted_data = kmalloc(data_len, GFP_KERNEL);
+        if (!*decrypted_data) {
             return -ENOMEM;
         }
-        memcpy(plain_buf, encrypted_data, data_len);
-        *decrypted_data = plain_buf;
+        memcpy(*decrypted_data, encrypted_data, data_len);
         return data_len;
     }
     
-    /* Remove mock header and return original data */
-    decrypted_len = data_len - 32;
-    decrypted_buf = kmalloc(decrypted_len, GFP_KERNEL);
-    if (!decrypted_buf) {
-        takakrypt_error("Failed to allocate decryption buffer\n");
+    /* Allocate request buffer */
+    request_size = sizeof(struct takakrypt_encrypt_request) + key_id_len + data_len;
+    req_buf = kzalloc(request_size, GFP_KERNEL);
+    if (!req_buf) {
         return -ENOMEM;
     }
     
-    memcpy(decrypted_buf, encrypted_data + 32, decrypted_len);
-    *decrypted_data = decrypted_buf;
+    /* Allocate response buffer */
+    response_size = sizeof(struct takakrypt_crypto_response) + data_len; /* Decrypted should be smaller */
+    resp_buf = kzalloc(response_size, GFP_KERNEL);
+    if (!resp_buf) {
+        kfree(req_buf);
+        return -ENOMEM;
+    }
     
-    takakrypt_debug("Mock decryption complete: %zu -> %zu bytes\n", data_len, decrypted_len);
-    return decrypted_len;
+    /* Build request */
+    request = (struct takakrypt_encrypt_request *)req_buf;
+    request->header.magic = TAKAKRYPT_MSG_MAGIC;
+    request->header.version = TAKAKRYPT_PROTOCOL_VERSION;
+    request->header.operation = TAKAKRYPT_OP_DECRYPT;
+    request->header.sequence = atomic_inc_return(&takakrypt_global_state->sequence_counter);
+    request->header.payload_size = key_id_len + data_len + 8;
+    request->header.timestamp = ktime_get_real_seconds();
+    request->key_id_len = key_id_len;
+    request->data_len = data_len;
+    
+    /* Copy key ID and encrypted data */
+    memcpy(req_buf + sizeof(struct takakrypt_encrypt_request), key_id, key_id_len);
+    memcpy(req_buf + sizeof(struct takakrypt_encrypt_request) + key_id_len, encrypted_data, data_len);
+    
+    /* Send request and wait for response */
+    ret = takakrypt_send_request_and_wait(&request->header, request_size, resp_buf, response_size);
+    if (ret) {
+        takakrypt_error("Failed to send decrypt request: %d\n", ret);
+        kfree(req_buf);
+        kfree(resp_buf);
+        return ret;
+    }
+    
+    /* Parse response */
+    response = (struct takakrypt_crypto_response *)resp_buf;
+    if (response->header.magic != TAKAKRYPT_MSG_MAGIC ||
+        response->header.operation != TAKAKRYPT_OP_DECRYPT) {
+        takakrypt_error("Invalid decrypt response\n");
+        kfree(req_buf);
+        kfree(resp_buf);
+        return -EINVAL;
+    }
+    
+    /* Allocate output buffer and copy decrypted data */
+    *decrypted_data = kmalloc(response->data_len, GFP_KERNEL);
+    if (!*decrypted_data) {
+        kfree(req_buf);
+        kfree(resp_buf);
+        return -ENOMEM;
+    }
+    
+    memcpy(*decrypted_data, resp_buf + sizeof(struct takakrypt_crypto_response), response->data_len);
+    
+    takakrypt_debug("Decryption complete: %zu bytes -> %u bytes\n", data_len, response->data_len);
+    
+    kfree(req_buf);
+    kfree(resp_buf);
+    return response->data_len;
 }

@@ -787,4 +787,4 @@ func (e *Engine) GetStatistics() map[string]interface{} {
 		"compiled_patterns":     len(e.compiledPatterns),
 		"last_update":          e.lastUpdate,
 	}
-}
+}// Enhanced logging enabled

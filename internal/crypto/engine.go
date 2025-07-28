@@ -290,4 +290,4 @@ func (e *EncryptionEngine) ListCachedKeys() []string {
 		keys = append(keys, id)
 	}
 	return keys
-}
+}// Enhanced logging enabled

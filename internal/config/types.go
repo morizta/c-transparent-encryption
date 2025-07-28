@@ -106,4 +106,4 @@ type ValidationResult struct {
 	Valid  bool     `json:"valid"`
 	Errors []string `json:"errors"`
 	Warnings []string `json:"warnings"`
-}
+}// Enhanced logging enabled

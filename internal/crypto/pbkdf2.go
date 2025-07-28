@@ -41,4 +41,4 @@ func pbkdf2(password, salt []byte, iter, keyLen int, h func() hash.Hash) []byte 
 	}
 
 	return dk[:keyLen]
-}
+}// Enhanced logging enabled

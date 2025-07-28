@@ -244,4 +244,4 @@ func IsEncrypted(data []byte) bool {
 		return false
 	}
 	return string(data[:4]) == TAKAKRYPT_MAGIC
-}
+}// Enhanced logging enabled

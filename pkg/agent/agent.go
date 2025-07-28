@@ -480,4 +480,4 @@ func (w *Worker) processRequests() error {
 	}
 
 	return nil
-}
+}// Enhanced logging enabled

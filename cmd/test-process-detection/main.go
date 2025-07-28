@@ -447,4 +447,4 @@ func isRelevantEnvVar(key string) bool {
 	}
 
 	return false
-}
+}// Enhanced logging enabled

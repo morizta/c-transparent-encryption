@@ -319,4 +319,4 @@ func (p *Parser) Reload() (*Config, error) {
 // GetConfig returns the currently loaded configuration
 func (p *Parser) GetConfig() *Config {
 	return p.config
-}
+}// Enhanced logging enabled

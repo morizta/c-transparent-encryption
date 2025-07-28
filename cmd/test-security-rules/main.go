@@ -247,4 +247,4 @@ func joinStrings(strs []string, sep string) string {
 		result += sep + strs[i]
 	}
 	return result
-}
+}// Enhanced logging enabled

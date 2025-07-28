@@ -1,6 +1,11 @@
+/* Enhanced logging added for debugging */
+
 #include "takakrypt.h"
 #include <linux/kprobes.h>
 #include <linux/version.h>
+
+/* External function from vfs_hooks.c */
+extern int takakrypt_install_file_hooks(struct file *file);
 
 /* Kprobe handlers for VFS interception */
 static struct kprobe kp_vfs_read;
@@ -15,6 +20,9 @@ static int pre_vfs_read(struct kprobe *p, struct pt_regs *regs)
     struct file *file;
     char filepath[TAKAKRYPT_MAX_PATH_LEN];
     
+    /* Always log that kprobe was triggered */
+    takakrypt_info("KPROBE: vfs_read intercepted\n");
+    
     /* Get file parameter from registers (first argument) */
 #ifdef CONFIG_X86_64
     file = (struct file *)regs->di;
@@ -22,13 +30,18 @@ static int pre_vfs_read(struct kprobe *p, struct pt_regs *regs)
     file = (struct file *)regs->ARM_r0;
 #endif
     
-    if (!file || !takakrypt_should_intercept_file(file)) {
+    if (!file) {
+        takakrypt_debug("KPROBE: vfs_read - no file pointer\n");
+        return 0;
+    }
+    
+    if (!takakrypt_should_intercept_file(file)) {
         return 0;
     }
     
     /* Get file path for debugging */
     if (takakrypt_get_file_path(file, filepath, sizeof(filepath)) == 0) {
-        takakrypt_debug("Intercepted vfs_read for: %s\n", filepath);
+        takakrypt_info("KPROBE: Intercepted vfs_read for: %s\n", filepath);
         
         /* Update statistics */
         spin_lock(&takakrypt_global_state->stats_lock);
@@ -37,6 +50,9 @@ static int pre_vfs_read(struct kprobe *p, struct pt_regs *regs)
         
         /* Check policy */
         takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_READ);
+        
+        /* Install VFS hooks for this file */
+        takakrypt_install_file_hooks(file);
     }
     
     return 0;
@@ -50,6 +66,9 @@ static int pre_vfs_write(struct kprobe *p, struct pt_regs *regs)
     struct file *file;
     char filepath[TAKAKRYPT_MAX_PATH_LEN];
     
+    /* Always log that kprobe was triggered */
+    takakrypt_info("KPROBE: vfs_write intercepted\n");
+    
     /* Get file parameter from registers (first argument) */
 #ifdef CONFIG_X86_64
     file = (struct file *)regs->di;
@@ -57,13 +76,18 @@ static int pre_vfs_write(struct kprobe *p, struct pt_regs *regs)
     file = (struct file *)regs->ARM_r0;
 #endif
     
-    if (!file || !takakrypt_should_intercept_file(file)) {
+    if (!file) {
+        takakrypt_debug("KPROBE: vfs_write - no file pointer\n");
+        return 0;
+    }
+    
+    if (!takakrypt_should_intercept_file(file)) {
         return 0;
     }
     
     /* Get file path for debugging */
     if (takakrypt_get_file_path(file, filepath, sizeof(filepath)) == 0) {
-        takakrypt_debug("Intercepted vfs_write for: %s\n", filepath);
+        takakrypt_info("KPROBE: Intercepted vfs_write for: %s\n", filepath);
         
         /* Update statistics */
         spin_lock(&takakrypt_global_state->stats_lock);
@@ -72,6 +96,9 @@ static int pre_vfs_write(struct kprobe *p, struct pt_regs *regs)
         
         /* Check policy */
         takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_WRITE);
+        
+        /* Install VFS hooks for this file */
+        takakrypt_install_file_hooks(file);
     }
     
     return 0;
@@ -126,25 +153,45 @@ int takakrypt_install_global_hooks(void)
     
     takakrypt_info("Installing global VFS hooks using kprobes\n");
     
-    /* Setup kprobe for vfs_read */
+    /* Try vfs_read first, fallback to new_sync_read */
     kp_vfs_read.symbol_name = "vfs_read";
     kp_vfs_read.pre_handler = pre_vfs_read;
     
     ret = register_kprobe(&kp_vfs_read);
     if (ret < 0) {
-        takakrypt_error("Failed to register vfs_read kprobe: %d\n", ret);
-        return ret;
+        takakrypt_warn("Failed to register vfs_read kprobe: %d, trying new_sync_read\n", ret);
+        /* Try alternative function */
+        kp_vfs_read.symbol_name = "new_sync_read";
+        ret = register_kprobe(&kp_vfs_read);
+        if (ret < 0) {
+            takakrypt_error("Failed to register new_sync_read kprobe: %d\n", ret);
+            return ret;
+        } else {
+            takakrypt_info("Registered new_sync_read kprobe successfully\n");
+        }
+    } else {
+        takakrypt_info("Registered vfs_read kprobe successfully\n");
     }
     
-    /* Setup kprobe for vfs_write */
+    /* Try vfs_write first, fallback to new_sync_write */
     kp_vfs_write.symbol_name = "vfs_write";
     kp_vfs_write.pre_handler = pre_vfs_write;
     
     ret = register_kprobe(&kp_vfs_write);
     if (ret < 0) {
-        takakrypt_error("Failed to register vfs_write kprobe: %d\n", ret);
-        unregister_kprobe(&kp_vfs_read);
-        return ret;
+        takakrypt_warn("Failed to register vfs_write kprobe: %d, trying new_sync_write\n", ret);
+        /* Try alternative function */
+        kp_vfs_write.symbol_name = "new_sync_write";
+        ret = register_kprobe(&kp_vfs_write);
+        if (ret < 0) {
+            takakrypt_error("Failed to register new_sync_write kprobe: %d\n", ret);
+            unregister_kprobe(&kp_vfs_read);
+            return ret;
+        } else {
+            takakrypt_info("Registered new_sync_write kprobe successfully\n");
+        }
+    } else {
+        takakrypt_info("Registered vfs_write kprobe successfully\n");
     }
     
     kprobes_installed = true;

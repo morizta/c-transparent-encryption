@@ -1,3 +1,5 @@
+/* Enhanced logging added for debugging */
+
 #include "takakrypt.h"
 
 #define TAKAKRYPT_PROC_DIR "takakrypt"

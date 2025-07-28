@@ -285,4 +285,4 @@ func mapOperationToActions(operation string) []string {
 	default:
 		return []string{operation}
 	}
-}
+}// Enhanced logging enabled

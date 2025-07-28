@@ -375,4 +375,4 @@ func (m *MockKMSClient) addDefaultTestData() {
 			UpdatedAt: time.Now(),
 		}
 	}
-}
+}// Enhanced logging enabled

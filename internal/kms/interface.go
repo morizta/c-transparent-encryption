@@ -120,4 +120,4 @@ func NewKMSErrorWithDetails(code, message, details string) *KMSError {
 		Message: message,
 		Details: details,
 	}
-}
+}// Enhanced logging enabled

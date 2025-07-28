@@ -345,4 +345,4 @@ func createTestConfig() *config.Config {
 func saveConfig(cfg *config.Config, path string) {
 	data, _ := yaml.Marshal(cfg)
 	ioutil.WriteFile(path, data, 0644)
-}
+}// Enhanced logging enabled

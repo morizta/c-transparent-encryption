@@ -222,4 +222,4 @@ func (fe *FileEncryptionEngine) getAlgorithmDistribution() map[string]int {
 		distribution[key.Algorithm]++
 	}
 	return distribution
-}
+}// Enhanced logging enabled

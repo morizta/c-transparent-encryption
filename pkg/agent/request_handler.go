@@ -39,6 +39,12 @@ func NewRequestHandler(agent *Agent, policyEngine *policy.Engine) *RequestHandle
 func (h *RequestHandler) ProcessMessage(ctx context.Context, msg *netlink.TakakryptMessage) ([]byte, error) {
 	startTime := time.Now()
 	
+	logrus.WithFields(logrus.Fields{
+		"operation": msg.Header.Operation,
+		"sequence":  msg.Header.Sequence,
+		"data_len":  msg.Header.DataLen,
+	}).Info("AGENT_REQUEST: Processing request from kernel")
+	
 	// Update statistics
 	h.agent.stats.mu.Lock()
 	h.agent.stats.RequestsProcessed++
@@ -50,27 +56,39 @@ func (h *RequestHandler) ProcessMessage(ctx context.Context, msg *netlink.Takakr
 
 	switch msg.Header.Operation {
 	case netlink.TAKAKRYPT_OP_CHECK_POLICY:
+		logrus.Info("AGENT_REQUEST: Handling policy check request")
 		response, err = h.handlePolicyCheck(ctx, msg)
 		if err == nil {
+			logrus.Info("AGENT_REQUEST: Policy check completed successfully")
 			h.agent.stats.mu.Lock()
 			h.agent.stats.PolicyChecks++
 			h.agent.stats.mu.Unlock()
+		} else {
+			logrus.WithError(err).Error("AGENT_REQUEST: Policy check failed")
 		}
 
 	case netlink.TAKAKRYPT_OP_ENCRYPT:
+		logrus.Info("AGENT_REQUEST: Handling encryption request")
 		response, err = h.handleEncryption(ctx, msg)
 		if err == nil {
+			logrus.Info("AGENT_REQUEST: Encryption completed successfully")
 			h.agent.stats.mu.Lock()
 			h.agent.stats.EncryptionOps++
 			h.agent.stats.mu.Unlock()
+		} else {
+			logrus.WithError(err).Error("AGENT_REQUEST: Encryption failed")
 		}
 
 	case netlink.TAKAKRYPT_OP_DECRYPT:
+		logrus.Info("AGENT_REQUEST: Handling decryption request")
 		response, err = h.handleDecryption(ctx, msg)
 		if err == nil {
+			logrus.Info("AGENT_REQUEST: Decryption completed successfully")
 			h.agent.stats.mu.Lock()
 			h.agent.stats.DecryptionOps++
 			h.agent.stats.mu.Unlock()
+		} else {
+			logrus.WithError(err).Error("AGENT_REQUEST: Decryption failed")
 		}
 
 	case netlink.TAKAKRYPT_OP_HEALTH_CHECK:
@@ -202,14 +220,25 @@ func (h *RequestHandler) handleEncryption(ctx context.Context, msg *netlink.Taka
 	logrus.WithFields(logrus.Fields{
 		"key_id":    keyID,
 		"data_size": len(data),
-	}).Debug("Processing encryption request")
+		"sequence":  msg.Header.Sequence,
+	}).Info("AGENT_ENCRYPT: Starting encryption process")
 
 	// Perform encryption using the file encryption engine
+	logrus.Info("AGENT_ENCRYPT: Creating file encryption engine")
 	fileEngine := crypto.NewFileEncryptionEngine()
+	logrus.WithFields(logrus.Fields{
+		"key_id": keyID,
+		"data_size": len(data),
+	}).Info("AGENT_ENCRYPT: Calling encryption engine")
 	encryptedData, err := fileEngine.EncryptFile(data, keyID)
 	if err != nil {
+		logrus.WithError(err).Error("AGENT_ENCRYPT: Encryption engine failed")
 		return nil, fmt.Errorf("encryption failed: %w", err)
 	}
+	logrus.WithFields(logrus.Fields{
+		"original_size": len(data),
+		"encrypted_size": len(encryptedData),
+	}).Info("AGENT_ENCRYPT: Encryption engine succeeded")
 
 	// Create response
 	response, err := netlink.SerializeResponse(msg.Header.Sequence, 
@@ -222,7 +251,8 @@ func (h *RequestHandler) handleEncryption(ctx context.Context, msg *netlink.Taka
 		"key_id":           keyID,
 		"plaintext_size":   len(data),
 		"ciphertext_size":  len(encryptedData),
-	}).Debug("Encryption completed")
+		"sequence":        msg.Header.Sequence,
+	}).Info("AGENT_ENCRYPT: Encryption operation completed successfully")
 
 	return response, nil
 }
@@ -360,4 +390,4 @@ func (h *RequestHandler) createEvaluationContext(path string, operation, uid, gi
 		Operation:   operationStr,
 		Timestamp:   time.Now(),
 	}, nil
-}
+}// Enhanced logging enabled

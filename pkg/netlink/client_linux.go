@@ -98,11 +98,27 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.addr = addr
 	c.connected = true
 
+	logrus.WithFields(logrus.Fields{
+		"fd":      c.fd,
+		"pid":     addr.Pid,
+		"family":  TAKAKRYPT_NETLINK_FAMILY,
+	}).Info("Connected to kernel module")
+
+	// Unlock mutex before sending health check to avoid deadlock
+	c.mu.Unlock()
+	
 	// Send initial health check to announce our presence
+	logrus.Info("Sending initial health check to kernel")
 	if err := c.sendHealthCheck(); err != nil {
-		logrus.WithError(err).Warn("Failed to send initial health check")
-		// Don't fail connection for this - kernel module might not be loaded yet
+		logrus.WithError(err).Error("Failed to send initial health check")
+		// Reacquire lock before returning
+		c.mu.Lock()
+		return fmt.Errorf("failed to send initial health check: %w", err)
 	}
+	logrus.Info("Initial health check sent successfully")
+	
+	// Reacquire lock before returning
+	c.mu.Lock()
 
 	logrus.WithFields(logrus.Fields{
 		"fd":      c.fd,
@@ -154,6 +170,12 @@ func (c *Client) SendMessage(msg *Message) error {
 		return fmt.Errorf("not connected to kernel module")
 	}
 
+	logrus.WithFields(logrus.Fields{
+		"operation": msg.Type,
+		"sequence":  msg.Sequence,
+		"data_len":  len(msg.Data),
+	}).Debug("Preparing to send message to kernel")
+
 	// Create message header
 	header := MessageHeader{
 		Magic:       TAKAKRYPT_MSG_MAGIC,
@@ -197,7 +219,15 @@ func (c *Client) SendMessage(msg *Message) error {
 		Groups: 0,
 	}
 
+	logrus.WithFields(logrus.Fields{
+		"fd":        c.fd,
+		"dest_pid":  dest.Pid,
+		"msg_len":   len(nlmsg),
+		"total_size": totalSize,
+	}).Debug("About to send netlink message")
+
 	if err := syscall.Sendto(c.fd, nlmsg, 0, dest); err != nil {
+		logrus.WithError(err).Error("syscall.Sendto failed")
 		return fmt.Errorf("failed to send netlink message: %w", err)
 	}
 
@@ -205,7 +235,7 @@ func (c *Client) SendMessage(msg *Message) error {
 		"operation": msg.Type,
 		"sequence":  msg.Sequence,
 		"size":      totalSize,
-	}).Debug("Sent message to kernel")
+	}).Info("Successfully sent message to kernel")
 
 	return nil
 }
@@ -299,11 +329,13 @@ func (c *Client) getNextSequence() uint32 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sequenceID++
+	logrus.WithField("sequence", c.sequenceID).Debug("Generated sequence number")
 	return c.sequenceID
 }
 
 // sendHealthCheck sends a health check message to the kernel
 func (c *Client) sendHealthCheck() error {
+	logrus.Debug("Creating health check message")
 	msg := &Message{
 		Type:      TAKAKRYPT_OP_HEALTH_CHECK,
 		Sequence:  c.getNextSequence(),
@@ -311,7 +343,19 @@ func (c *Client) sendHealthCheck() error {
 		Timestamp: time.Now(),
 	}
 
-	return c.SendMessage(msg)
+	logrus.WithFields(logrus.Fields{
+		"type":     msg.Type,
+		"sequence": msg.Sequence,
+	}).Debug("Sending health check message")
+
+	err := c.SendMessage(msg)
+	if err != nil {
+		logrus.WithError(err).Error("Failed to send health check message")
+		return err
+	}
+
+	logrus.Debug("Health check message sent successfully")
+	return nil
 }
 
 // SendPolicyCheckRequest sends a policy check request
@@ -452,4 +496,4 @@ func (c *Client) SendStatusRequest() (*Message, error) {
 	}
 
 	return response, nil
-}
+}// Enhanced logging enabled

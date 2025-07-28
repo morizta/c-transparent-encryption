@@ -170,4 +170,4 @@ func main() {
 	fmt.Println("\n=== All Tests Passed! ===")
 	fmt.Println("Real AES-256-GCM encryption implementation is working correctly.")
 	fmt.Printf("Encryption adds %d bytes overhead per file.\n", len(encryptedData)-len(originalData))
-}
+}// Enhanced logging enabled

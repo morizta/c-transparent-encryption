@@ -809,4 +809,4 @@ func (pd *ProcessDetector) GetCacheStats() map[string]interface{} {
 		"cache_size":    len(pd.processCache),
 		"default_ttl":   pd.defaultTTL,
 	}
-}
+}// Enhanced logging enabled

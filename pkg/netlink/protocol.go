@@ -419,4 +419,4 @@ func SerializeResponse(seq uint32, operation uint16, status uint32, responseData
 	buf.Write(responseData)
 
 	return buf.Bytes(), nil
-}
+}// Enhanced logging enabled

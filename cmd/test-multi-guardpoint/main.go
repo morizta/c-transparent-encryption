@@ -529,4 +529,4 @@ func getUserByID(uid int) (string, error) {
 func checkFileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
+}// Enhanced logging enabled

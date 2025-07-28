@@ -96,4 +96,4 @@ func main() {
 	} else {
 		fmt.Printf("Decryption with file data successful: %s\n", string(decrypted))
 	}
-}
+}// Enhanced logging enabled

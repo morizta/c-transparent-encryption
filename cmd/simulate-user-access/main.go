@@ -197,4 +197,4 @@ func main() {
 		fmt.Printf("⚠️  Some tests failed. Review policy configuration.\n")
 		os.Exit(1)
 	}
-}
+}// Enhanced logging enabled

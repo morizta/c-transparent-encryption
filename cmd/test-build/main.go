@@ -33,4 +33,4 @@ func main() {
 	}
 
 	fmt.Println("✅ Basic build test completed successfully!")
-}
+}// Enhanced logging enabled

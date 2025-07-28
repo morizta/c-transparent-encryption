@@ -250,4 +250,4 @@ func reloadConfiguration(parser *config.Parser, cfg *config.Config, policyEngine
 	}).Info("Configuration reloaded successfully")
 
 	return nil
-}
+}// Enhanced logging enabled

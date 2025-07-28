@@ -1,0 +1,24 @@
+# Comprehensive Logging Configuration for Takakrypt
+
+logging:
+  kernel_module:
+    debug_level: 4  # Maximum debug
+    log_all_vfs_operations: true
+    log_policy_evaluation: true
+    log_encryption_operations: true
+    log_cache_operations: true
+    log_netlink_messages: true
+    
+  userspace_agent:
+    log_level: "debug"
+    log_policy_decisions: true
+    log_encryption_requests: true
+    log_file_operations: true
+    log_performance_metrics: true
+    
+  output:
+    kernel_log: "/tmp/takakrypt-kernel-debug.log"
+    agent_log: "/tmp/takakrypt-agent-debug.log"
+    vfs_log: "/tmp/takakrypt-vfs-debug.log"
+    policy_log: "/tmp/takakrypt-policy-debug.log"
+    crypto_log: "/tmp/takakrypt-crypto-debug.log"

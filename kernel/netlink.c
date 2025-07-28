@@ -1,3 +1,5 @@
+/* Enhanced logging added for debugging */
+
 #include "takakrypt.h"
 
 /* Forward declarations */
@@ -575,15 +577,21 @@ int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg,
     struct pending_request *pending_req;
     int ret;
     
+    takakrypt_info("NETLINK_SEND: Starting request sequence=%u, operation=%u, size=%zu\n", 
+                   msg->sequence, msg->operation, msg_size);
+    
     if (!msg || !response) {
+        takakrypt_error("NETLINK_SEND: Invalid parameters\n");
         return -EINVAL;
     }
     
     /* Check if agent is connected */
     if (takakrypt_global_state->agent_pid == 0) {
-        takakrypt_debug("No agent connected for request\n");
+        takakrypt_error("NETLINK_SEND: No agent connected for request\n");
         return -ENOTCONN;
     }
+    
+    takakrypt_info("NETLINK_SEND: Agent is connected (PID=%u)\n", takakrypt_global_state->agent_pid);
     
     /* Create pending request */
     pending_req = takakrypt_create_pending_request(msg->sequence);
@@ -592,17 +600,25 @@ int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg,
     }
     
     /* Send request */
+    takakrypt_info("NETLINK_SEND: Sending request to agent\n");
     ret = takakrypt_send_request(msg, msg_size);
     if (ret) {
+        takakrypt_error("NETLINK_SEND: Failed to send request: %d\n", ret);
         takakrypt_cleanup_pending_request(pending_req);
         return ret;
     }
+    
+    takakrypt_info("NETLINK_SEND: Request sent, waiting for response (5 second timeout)\n");
     
     /* Wait for response */
     ret = takakrypt_wait_for_response(pending_req, 5000); /* 5 second timeout */
     if (ret == 0 && pending_req->response_data && pending_req->response_size > 0) {
         size_t copy_size = min(response_size, pending_req->response_size);
+        takakrypt_info("NETLINK_SEND: Received response: %zu bytes\n", pending_req->response_size);
         memcpy(response, pending_req->response_data, copy_size);
+    } else {
+        takakrypt_error("NETLINK_SEND: Failed to get response: ret=%d, data=%p, size=%zu\n", 
+                       ret, pending_req->response_data, pending_req->response_size);
     }
     
     /* Cleanup */
@@ -610,3 +626,4 @@ int takakrypt_send_request_and_wait(struct takakrypt_msg_header *msg,
     
     return ret;
 }
+EXPORT_SYMBOL(takakrypt_send_request_and_wait);

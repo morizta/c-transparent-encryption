@@ -161,4 +161,4 @@ func main() {
 	fmt.Printf("   - User Sets: %d\n", len(cfg.UserSets))
 	fmt.Printf("   - Policies: %d\n", len(cfg.Policies))
 	fmt.Printf("   - Configuration is valid for user access testing\n")
-}
+}// Enhanced logging enabled

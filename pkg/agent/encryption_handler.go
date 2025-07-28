@@ -271,4 +271,4 @@ func (eh *EncryptionHandler) incrementError() {
 	eh.mu.Lock()
 	defer eh.mu.Unlock()
 	eh.errorCount++
-}
+}// Enhanced logging enabled

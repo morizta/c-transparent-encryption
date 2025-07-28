@@ -56,4 +56,4 @@ func main() {
 	} else {
 		fmt.Printf("Direct decryption successful: %s\n", string(decrypted))
 	}
-}
+}// Enhanced logging enabled

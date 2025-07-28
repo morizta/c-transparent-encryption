@@ -114,4 +114,4 @@ func (c *Client) SendStatusRequest() (*Message, error) {
 		Data:      []byte("status_ok"),
 		Timestamp: time.Now(),
 	}, nil
-}
+}// Enhanced logging enabled

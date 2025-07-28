@@ -119,14 +119,21 @@ struct takakrypt_crypto_request {
     uint8_t data[];           /* Variable length data */
 } __packed;
 
+/* Simplified encryption request */
+struct takakrypt_encrypt_request {
+    struct takakrypt_msg_header header;
+    uint32_t key_id_len;
+    uint32_t data_len;
+    /* Followed by key_id string and data */
+} __packed;
+
 /* Encryption/Decryption response */
 struct takakrypt_crypto_response {
     struct takakrypt_msg_header header;
     uint32_t status;
     uint32_t request_id;
-    uint32_t data_length;
-    uint8_t nonce[32];        /* Encryption nonce */
-    uint8_t data[];           /* Variable length encrypted/decrypted data */
+    uint32_t data_len;
+    /* Followed by encrypted/decrypted data */
 } __packed;
 
 /* Status information */

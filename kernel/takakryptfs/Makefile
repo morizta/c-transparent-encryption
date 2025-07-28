@@ -18,13 +18,13 @@ modules:
 	@echo "Building Takakrypt stackable filesystem module..."
 	@echo "Copying symbols from parent module..."
 	@cp ../Module.symvers . 2>/dev/null || true
-	$(MAKE) -C $(KERNEL_BUILD) M=$(PWD) KBUILD_EXTRA_SYMBOLS=../Module.symvers modules
+	$(MAKE) -C $(KERNEL_BUILD) M=$(PWD) KBUILD_EXTRA_SYMBOLS=$(PWD)/Module.symvers modules
 
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
 	$(MAKE) -C $(KERNEL_BUILD) M=$(PWD) clean
-	rm -f *.symvers *.order *.markers
+	rm -f *.order *.markers
 
 # Install module
 install: modules

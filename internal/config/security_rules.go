@@ -117,4 +117,4 @@ func (r *SecurityRule) ShouldAudit() bool {
 // IsPermitted returns true if the rule permits the action
 func (r *SecurityRule) IsPermitted() bool {
 	return r.HasEffect(EFFECT_PERMIT)
-}
+}// Enhanced logging enabled

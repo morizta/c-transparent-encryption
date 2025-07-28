@@ -308,8 +308,62 @@ struct dentry *takakryptfs_lookup(struct inode *dir, struct dentry *dentry, unsi
 int takakryptfs_create(struct user_namespace *mnt_userns, struct inode *dir, 
                        struct dentry *dentry, umode_t mode, bool excl)
 {
-    takakryptfs_debug("Create operation not yet implemented\n");
-    return -ENOSYS;
+    struct takakryptfs_sb_info *sb_info = takakryptfs_sb_to_private(dir->i_sb);
+    struct dentry *lower_parent_dentry = takakryptfs_dentry_to_lower(dentry->d_parent);
+    struct dentry *lower_dentry;
+    struct inode *lower_parent_inode = d_inode(lower_parent_dentry);
+    struct inode *lower_inode;
+    struct inode *takakryptfs_inode;
+    int ret;
+    
+    takakryptfs_debug("Creating file: %s\n", dentry->d_name.name);
+    
+    /* Create dentry in lower filesystem */
+    inode_lock(lower_parent_inode);
+    lower_dentry = lookup_one_len(dentry->d_name.name, lower_parent_dentry, 
+                                  dentry->d_name.len);
+    if (IS_ERR(lower_dentry)) {
+        ret = PTR_ERR(lower_dentry);
+        takakryptfs_error("Failed to lookup lower dentry: %d\n", ret);
+        goto out_unlock;
+    }
+    
+    /* Create file in lower filesystem */
+    ret = vfs_create(mnt_userns, lower_parent_inode, lower_dentry, mode, excl);
+    if (ret) {
+        takakryptfs_error("Failed to create lower file: %d\n", ret);
+        dput(lower_dentry);
+        goto out_unlock;
+    }
+    
+    /* Get the created lower inode */
+    lower_inode = d_inode(lower_dentry);
+    if (!lower_inode) {
+        takakryptfs_error("No lower inode after creation\n");
+        ret = -ENOENT;
+        dput(lower_dentry);
+        goto out_unlock;
+    }
+    
+    /* Create upper inode */
+    takakryptfs_inode = takakryptfs_get_inode(dir->i_sb, lower_inode);
+    if (IS_ERR(takakryptfs_inode)) {
+        ret = PTR_ERR(takakryptfs_inode);
+        takakryptfs_error("Failed to create upper inode: %d\n", ret);
+        dput(lower_dentry);
+        goto out_unlock;
+    }
+    
+    /* Link the dentry to the inode */
+    dentry->d_fsdata = lower_dentry;
+    d_add(dentry, takakryptfs_inode);
+    
+    takakryptfs_debug("File created successfully: %s\n", dentry->d_name.name);
+    ret = 0;
+    
+out_unlock:
+    inode_unlock(lower_parent_inode);
+    return ret;
 }
 
 int takakryptfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
