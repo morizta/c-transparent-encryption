@@ -787,4 +787,17 @@ func (e *Engine) GetStatistics() map[string]interface{} {
 		"compiled_patterns":     len(e.compiledPatterns),
 		"last_update":          e.lastUpdate,
 	}
-}// Enhanced logging enabled
+}
+
+// GetGuardPoints returns the current guard points configuration
+func (e *Engine) GetGuardPoints() []*GuardPoint {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	
+	// Return a copy to prevent external modification
+	guardPoints := make([]*GuardPoint, len(e.guardPoints))
+	copy(guardPoints, e.guardPoints)
+	return guardPoints
+}
+
+// Enhanced logging enabled

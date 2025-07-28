@@ -496,4 +496,74 @@ func (c *Client) SendStatusRequest() (*Message, error) {
 	}
 
 	return response, nil
-}// Enhanced logging enabled
+}
+
+// GuardPointConfig represents guard point configuration for kernel
+type GuardPointConfig struct {
+	Name     string
+	Path     string
+	Enabled  bool
+}
+
+// ConfigUpdateData represents configuration data to send to kernel
+type ConfigUpdateData struct {
+	GuardPoints []GuardPointConfig
+}
+
+// SendConfigUpdate sends guard point configuration to kernel module
+func (c *Client) SendConfigUpdate(guardPoints []GuardPointConfig) error {
+	logrus.WithField("guard_points", len(guardPoints)).Debug("Sending configuration update to kernel")
+	
+	// Serialize guard points to send to kernel
+	// For now, send a simple format: count + (name_len + name + path_len + path + enabled) for each
+	var data []byte
+	
+	// Add guard point count (4 bytes)
+	count := make([]byte, 4)
+	for i := 0; i < 4; i++ {
+		count[i] = byte(len(guardPoints) >> (8 * (3 - i)))
+	}
+	data = append(data, count...)
+	
+	// Add each guard point
+	for _, gp := range guardPoints {
+		// Name length (4 bytes) + name
+		nameLen := make([]byte, 4)
+		for i := 0; i < 4; i++ {
+			nameLen[i] = byte(len(gp.Name) >> (8 * (3 - i)))
+		}
+		data = append(data, nameLen...)
+		data = append(data, []byte(gp.Name)...)
+		
+		// Path length (4 bytes) + path  
+		pathLen := make([]byte, 4)
+		for i := 0; i < 4; i++ {
+			pathLen[i] = byte(len(gp.Path) >> (8 * (3 - i)))
+		}
+		data = append(data, pathLen...)
+		data = append(data, []byte(gp.Path)...)
+		
+		// Enabled flag (1 byte)
+		if gp.Enabled {
+			data = append(data, 1)
+		} else {
+			data = append(data, 0)
+		}
+	}
+	
+	msg := &Message{
+		Type:      TAKAKRYPT_OP_SET_CONFIG,
+		Sequence:  c.getNextSequence(),
+		Data:      data,
+		Timestamp: time.Now(),
+	}
+	
+	if err := c.SendMessage(msg); err != nil {
+		return fmt.Errorf("failed to send config update: %w", err)
+	}
+	
+	logrus.Info("Configuration sent to kernel module successfully")
+	return nil
+}
+
+// Enhanced logging enabled

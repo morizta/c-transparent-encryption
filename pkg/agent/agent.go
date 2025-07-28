@@ -116,6 +116,11 @@ func (a *Agent) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to connect netlink client: %w", err)
 	}
 
+	// Send guard point configuration to kernel
+	if err := a.sendConfigurationToKernel(); err != nil {
+		logrus.WithError(err).Warn("Failed to send configuration to kernel, continuing anyway")
+	}
+
 	// Start workers
 	if err := a.startWorkers(ctx); err != nil {
 		return fmt.Errorf("failed to start workers: %w", err)
@@ -480,4 +485,43 @@ func (w *Worker) processRequests() error {
 	}
 
 	return nil
-}// Enhanced logging enabled
+}
+
+// sendConfigurationToKernel sends guard point configuration to kernel module
+func (a *Agent) sendConfigurationToKernel() error {
+	logrus.Info("Sending guard point configuration to kernel module")
+	
+	// Get guard points from policy engine
+	guardPoints := a.policyEngine.GetGuardPoints()
+	if len(guardPoints) == 0 {
+		logrus.Warn("No guard points configured, kernel will not intercept any files")
+		return nil
+	}
+	
+	// Convert to netlink format
+	var netlinkGuardPoints []netlink.GuardPointConfig
+	for _, gp := range guardPoints {
+		netlinkGP := netlink.GuardPointConfig{
+			Name:    gp.Name,
+			Path:    gp.Path,
+			Enabled: gp.Enabled,
+		}
+		netlinkGuardPoints = append(netlinkGuardPoints, netlinkGP)
+		
+		logrus.WithFields(logrus.Fields{
+			"name":    gp.Name,
+			"path":    gp.Path,
+			"enabled": gp.Enabled,
+		}).Debug("Sending guard point to kernel")
+	}
+	
+	// Send configuration to kernel
+	if err := a.netlinkClient.SendConfigUpdate(netlinkGuardPoints); err != nil {
+		return fmt.Errorf("failed to send guard points to kernel: %w", err)
+	}
+	
+	logrus.WithField("guard_points", len(netlinkGuardPoints)).Info("Guard point configuration sent to kernel successfully")
+	return nil
+}
+
+// Enhanced logging enabled

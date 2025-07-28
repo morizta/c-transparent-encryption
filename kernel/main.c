@@ -46,9 +46,13 @@ static int takakrypt_init_state(void)
     
     /* Initialize locks */
     mutex_init(&takakrypt_global_state->config_lock);
+    mutex_init(&takakrypt_global_state->guard_points_lock);
     spin_lock_init(&takakrypt_global_state->stats_lock);
     spin_lock_init(&takakrypt_global_state->cache_lock);
     spin_lock_init(&takakrypt_global_state->file_contexts_lock);
+    
+    /* Initialize guard points */
+    takakrypt_global_state->guard_points.count = 0;
     
     /* Initialize lists */
     INIT_LIST_HEAD(&takakrypt_global_state->file_contexts);

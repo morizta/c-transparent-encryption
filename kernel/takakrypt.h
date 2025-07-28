@@ -161,6 +161,22 @@ struct takakrypt_config {
     uint32_t max_concurrent_ops;
 } __packed;
 
+/* Guard point configuration */
+#define TAKAKRYPT_MAX_GUARD_POINTS 32
+#define TAKAKRYPT_MAX_GP_NAME_LEN 64
+#define TAKAKRYPT_MAX_GP_PATH_LEN 256
+
+struct takakrypt_guard_point {
+    char name[TAKAKRYPT_MAX_GP_NAME_LEN];
+    char path[TAKAKRYPT_MAX_GP_PATH_LEN];
+    uint32_t enabled;
+} __packed;
+
+struct takakrypt_guard_point_config {
+    uint32_t count;
+    struct takakrypt_guard_point points[TAKAKRYPT_MAX_GUARD_POINTS];
+} __packed;
+
 /* Cache entry for policy decisions */
 struct takakrypt_cache_entry {
     struct hlist_node node;
@@ -199,6 +215,10 @@ struct takakrypt_state {
     /* Configuration */
     struct takakrypt_config config;
     struct mutex config_lock;
+    
+    /* Guard points */
+    struct takakrypt_guard_point_config guard_points;
+    struct mutex guard_points_lock;
     
     /* Policy decision cache */
     struct hlist_head *policy_cache;

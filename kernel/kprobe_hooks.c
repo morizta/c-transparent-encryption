@@ -105,11 +105,13 @@ static int pre_vfs_write(struct kprobe *p, struct pt_regs *regs)
 }
 
 /**
- * Check if file should be intercepted
+ * Check if file should be intercepted based on configured guard points
  */
 int takakrypt_should_intercept_file(struct file *file)
 {
     char filepath[TAKAKRYPT_MAX_PATH_LEN];
+    uint32_t i;
+    int should_intercept = 0;
     
     if (!file || !file->f_inode) {
         return 0;
@@ -132,12 +134,33 @@ int takakrypt_should_intercept_file(struct file *file)
         return 0;
     }
     
-    /* Only intercept files in test directory for now */
-    if (strstr(filepath, "/tmp/takakrypt-test") != NULL) {
-        return 1;
+    /* Check against configured guard points */
+    mutex_lock(&takakrypt_global_state->guard_points_lock);
+    
+    for (i = 0; i < takakrypt_global_state->guard_points.count; i++) {
+        struct takakrypt_guard_point *gp = &takakrypt_global_state->guard_points.points[i];
+        
+        /* Skip disabled guard points */
+        if (!gp->enabled) {
+            continue;
+        }
+        
+        /* Check if file path matches guard point path */
+        if (strstr(filepath, gp->path) != NULL) {
+            takakrypt_debug("File %s matches guard point '%s' (path: %s)\n", 
+                           filepath, gp->name, gp->path);
+            should_intercept = 1;
+            break;
+        }
     }
     
-    return 0;
+    mutex_unlock(&takakrypt_global_state->guard_points_lock);
+    
+    if (should_intercept) {
+        takakrypt_debug("Should intercept file: %s\n", filepath);
+    }
+    
+    return should_intercept;
 }
 
 /**

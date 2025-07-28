@@ -1,1 +1,0 @@
-cmd_/home/ntoi/c-transparent-encryption/kernel/takakryptfs/takakryptfs.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/takakryptfs.ko /home/ntoi/c-transparent-encryption/kernel/takakryptfs/takakryptfs.o /home/ntoi/c-transparent-encryption/kernel/takakryptfs/takakryptfs.mod.o;  true

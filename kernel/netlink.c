@@ -454,30 +454,80 @@ static void takakrypt_handle_status_request(struct takakrypt_msg_header *msg_hea
 }
 
 /**
- * takakrypt_handle_config_update - Handle configuration update
+ * takakrypt_handle_config_update - Handle guard point configuration update
  * @msg_header: Message header
- * @payload: Configuration data
+ * @payload: Guard point configuration data
  */
 static void takakrypt_handle_config_update(struct takakrypt_msg_header *msg_header, void *payload)
 {
-    struct takakrypt_config *new_config;
+    uint32_t *count_ptr;
+    uint8_t *data;
+    uint32_t count, i;
+    uint32_t offset = 0;
     
-    takakrypt_debug("Handling configuration update\n");
+    takakrypt_info("Handling guard point configuration update\n");
     
-    if (!payload || msg_header->payload_size < sizeof(struct takakrypt_config)) {
-        takakrypt_error("Invalid configuration payload\n");
+    if (!payload || msg_header->payload_size < 4) {
+        takakrypt_error("Invalid guard point configuration payload\n");
         return;
     }
     
-    new_config = (struct takakrypt_config *)payload;
+    data = (uint8_t *)payload;
     
-    /* Update configuration */
-    mutex_lock(&takakrypt_global_state->config_lock);
-    takakrypt_global_state->config = *new_config;
-    takakrypt_debug_level = new_config->debug_level;
-    mutex_unlock(&takakrypt_global_state->config_lock);
+    /* Parse guard point count (first 4 bytes) */
+    count_ptr = (uint32_t *)data;
+    count = *count_ptr;
+    offset += 4;
     
-    takakrypt_info("Configuration updated successfully\n");
+    takakrypt_info("Received %u guard points from agent\n", count);
+    
+    if (count > TAKAKRYPT_MAX_GUARD_POINTS) {
+        takakrypt_error("Too many guard points: %u > %u\n", count, TAKAKRYPT_MAX_GUARD_POINTS);
+        return;
+    }
+    
+    /* Update guard points configuration */
+    mutex_lock(&takakrypt_global_state->guard_points_lock);
+    takakrypt_global_state->guard_points.count = count;
+    
+    /* Parse each guard point */
+    for (i = 0; i < count && offset < msg_header->payload_size; i++) {
+        uint32_t name_len, path_len;
+        
+        /* Parse name length and name */
+        if (offset + 4 > msg_header->payload_size) break;
+        name_len = *(uint32_t *)(data + offset);
+        offset += 4;
+        
+        if (offset + name_len > msg_header->payload_size || name_len >= TAKAKRYPT_MAX_GP_NAME_LEN) break;
+        memcpy(takakrypt_global_state->guard_points.points[i].name, data + offset, name_len);
+        takakrypt_global_state->guard_points.points[i].name[name_len] = '\0';
+        offset += name_len;
+        
+        /* Parse path length and path */
+        if (offset + 4 > msg_header->payload_size) break;
+        path_len = *(uint32_t *)(data + offset);
+        offset += 4;
+        
+        if (offset + path_len > msg_header->payload_size || path_len >= TAKAKRYPT_MAX_GP_PATH_LEN) break;
+        memcpy(takakrypt_global_state->guard_points.points[i].path, data + offset, path_len);
+        takakrypt_global_state->guard_points.points[i].path[path_len] = '\0';
+        offset += path_len;
+        
+        /* Parse enabled flag */
+        if (offset + 1 > msg_header->payload_size) break;
+        takakrypt_global_state->guard_points.points[i].enabled = data[offset];
+        offset += 1;
+        
+        takakrypt_info("Guard point %u: name='%s', path='%s', enabled=%u\n", 
+                      i, takakrypt_global_state->guard_points.points[i].name,
+                      takakrypt_global_state->guard_points.points[i].path,
+                      takakrypt_global_state->guard_points.points[i].enabled);
+    }
+    
+    mutex_unlock(&takakrypt_global_state->guard_points_lock);
+    
+    takakrypt_info("Guard point configuration updated successfully (%u points)\n", count);
 }
 
 /**

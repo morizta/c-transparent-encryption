@@ -6,7 +6,7 @@ guard_points:
   - name: "test_encryption"
     path: "/tmp/takakrypt-user-test"
     recursive: true
-    policy: "test_policy"
+    policy: "User Documents Security Policy"
     include_patterns:
       - "*.txt"
       - "*.doc"
@@ -79,6 +79,94 @@ policies:
     audit_level: "info"
     enabled: true
 
+# Security Rules Policy (V2) - User-specific resource access
+policies_v2:
+  - name: "User Documents Security Policy"
+    type: "standard"
+    algorithm: "AES-256-GCM"
+    key_size: 256
+    enabled: true
+    security_rules:
+      # Rule 1: Ntoi can access admin documents
+      - order: 1
+        resource_set: "admin-doc"
+        user_set: "ntoi_only"
+        process_set: "common_apps"
+        actions: ["all_ops"]
+        effects: ["permit", "audit", "applykey"]
+        browsing: true
+        description: "Ntoi exclusive access to admin documents"
+      
+      # Rule 2: TestUser1 can access their documents
+      - order: 2
+        resource_set: "testuser1-doc"
+        user_set: "testuser1_only"
+        process_set: "common_apps"
+        actions: ["all_ops"]
+        effects: ["permit", "audit", "applykey"]
+        browsing: true
+        description: "TestUser1 exclusive access to their documents"
+      
+      # Rule 3: TestUser2 can access their documents
+      - order: 3
+        resource_set: "testuser2-doc"
+        user_set: "testuser2_only"
+        process_set: "common_apps"
+        actions: ["all_ops"]
+        effects: ["permit", "audit", "applykey"]
+        browsing: true
+        description: "TestUser2 exclusive access to their documents"
+      
+      # Rule 4: All users can access public documents
+      - order: 4
+        resource_set: "public"
+        user_set: "all_users"
+        process_set: "common_apps"
+        actions: ["all_ops"]
+        effects: ["permit", "audit", "applykey"]
+        browsing: true
+        description: "All users can access public documents"
+      
+      # Rule 5: Deny cross-user access (testuser1 cannot access testuser2 docs)
+      - order: 5
+        resource_set: "testuser2-doc"
+        user_set: "testuser1_only"
+        process_set: ""
+        actions: ["all_ops"]
+        effects: ["deny", "audit"]
+        browsing: false
+        description: "Block testuser1 from testuser2 documents"
+      
+      # Rule 6: Deny cross-user access (testuser2 cannot access testuser1 docs)
+      - order: 6
+        resource_set: "testuser1-doc"
+        user_set: "testuser2_only"
+        process_set: ""
+        actions: ["all_ops"]
+        effects: ["deny", "audit"]
+        browsing: false
+        description: "Block testuser2 from testuser1 documents"
+      
+      # Rule 7: Deny test users from admin documents
+      - order: 7
+        resource_set: "admin-doc"
+        user_set: "test_users"
+        process_set: ""
+        actions: ["all_ops"]
+        effects: ["deny", "audit"]
+        browsing: false
+        description: "Block test users from admin documents"
+      
+      # Rule 8: Default deny all other access
+      - order: 8
+        resource_set: ""
+        user_set: ""
+        process_set: ""
+        actions: ["all_ops"]
+        effects: ["deny", "audit"]
+        browsing: false
+        description: "Default deny for all other access attempts"
+
 # User Sets - Using actual system users
 user_sets:
   admin_users:
@@ -130,6 +218,38 @@ user_sets:
       - "mysql"
       - "mariadb"
     description: "Users allowed to access database files"
+  
+  # Individual user sets for security rules
+  ntoi_only:
+    name: "Ntoi Only"
+    users:
+      - "ntoi"
+    uids:
+      - 1000
+    groups:
+      - "sudo"
+      - "adm"
+    description: "Admin user ntoi only"
+  
+  testuser1_only:
+    name: "TestUser1 Only"
+    users:
+      - "testuser1"
+    uids:
+      - 1001
+    groups:
+      - "fuse"
+    description: "TestUser1 only"
+  
+  testuser2_only:
+    name: "TestUser2 Only"
+    users:
+      - "testuser2"
+    uids:
+      - 1002
+    groups:
+      - "fuse"
+    description: "TestUser2 only"
 
 # Process Sets - Common applications
 process_sets:
@@ -194,6 +314,35 @@ resource_sets:
       - "/var/lib/mysql.*"
       - "/var/lib/mariadb.*"
     description: "MariaDB/MySQL database files"
+  
+  # Directory-based resource sets (CTE style)
+  admin-doc:
+    name: "Admin Documents"
+    type: "Directory"
+    directories:
+      - "/admin-doc/"
+    description: "Documents for ntoi admin user"
+  
+  testuser1-doc:
+    name: "TestUser1 Documents"
+    type: "Directory"
+    directories:
+      - "/testuser1-doc/"
+    description: "Documents for testuser1"
+  
+  testuser2-doc:
+    name: "TestUser2 Documents"
+    type: "Directory"
+    directories:
+      - "/testuser2-doc/"
+    description: "Documents for testuser2"
+  
+  public:
+    name: "Public Documents"
+    type: "Directory"
+    directories:
+      - "/public/"
+    description: "Public documents accessible by all users"
 
 # KMS Configuration - Mock for testing
 kms:
