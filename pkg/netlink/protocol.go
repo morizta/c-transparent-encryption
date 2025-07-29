@@ -348,49 +348,65 @@ func ParsePolicyCheckRequest(msg *TakakryptMessage) (path string, operation, uid
 	return string(pathBytes), reqData.Operation, reqData.UID, reqData.GID, reqData.PID, nil
 }
 
+// PolicyCheckResponseKernel matches the kernel's fixed struct format
+type PolicyCheckResponseKernel struct {
+	Status    uint32     // Response status
+	Allow     uint32     // 1 if allowed, 0 if denied  
+	RequestID uint32     // Matching request ID
+	PolicyName [64]byte  // Applied policy name (fixed size)
+	KeyID     [64]byte   // Encryption key ID (fixed size)
+	Reason    [256]byte  // Decision reason (fixed size)
+} 
+
 // SerializePolicyCheckResponse creates a binary policy check response
 func SerializePolicyCheckResponse(seq uint32, allowAccess, encryptFile bool, keyID, reason, policyName string) ([]byte, error) {
-	if len(keyID) > 255 {
-		return nil, fmt.Errorf("key ID too long: %d > 255", len(keyID))
+	if len(keyID) > 63 {
+		keyID = keyID[:63] // Truncate to fit fixed size
 	}
-	if len(reason) > 1024 {
-		return nil, fmt.Errorf("reason too long: %d > 1024", len(reason))
+	if len(reason) > 255 {
+		reason = reason[:255] // Truncate to fit fixed size  
 	}
-	if len(policyName) > 255 {
-		return nil, fmt.Errorf("policy name too long: %d > 255", len(policyName))
+	if len(policyName) > 63 {
+		policyName = policyName[:63] // Truncate to fit fixed size
 	}
 
-	// Calculate total data length (for future use if needed)
-	// dataLen := 20 + len(keyID) + len(reason) + len(policyName) // 20 bytes for fixed fields
-
-	// Create response data structure
-	respData := PolicyCheckResponseData{
-		AllowAccess: 0,
-		EncryptFile: 0,
-		KeyIDLen:    uint32(len(keyID)),
-		ReasonLen:   uint32(len(reason)),
-		PolicyLen:   uint32(len(policyName)),
+	// Create kernel-compatible response structure
+	kernelResp := PolicyCheckResponseKernel{
+		Status:    TAKAKRYPT_STATUS_SUCCESS,
+		RequestID: seq, // Use sequence as request ID
 	}
 
 	if allowAccess {
-		respData.AllowAccess = 1
-	}
-	if encryptFile {
-		respData.EncryptFile = 1
+		kernelResp.Allow = 1
+	} else {
+		kernelResp.Allow = 0
 	}
 
-	// Serialize response data
+	// Copy strings to fixed-size arrays with null termination
+	copy(kernelResp.PolicyName[:], policyName)
+	copy(kernelResp.KeyID[:], keyID) 
+	copy(kernelResp.Reason[:], reason)
+
+	// Create header for kernel format (matching takakrypt_msg_header)
+	header := TakakryptHeader{
+		Magic:     TAKAKRYPT_MSG_MAGIC,
+		Version:   TAKAKRYPT_PROTOCOL_VERSION,
+		Operation: TAKAKRYPT_OP_CHECK_POLICY,
+		Sequence:  seq,
+		DataLen:   uint32(24 + 64 + 64 + 256), // status+allow+request_id + policy_name + key_id + reason
+		Status:    TAKAKRYPT_STATUS_SUCCESS,
+	}
+
+	// Serialize header + response
 	buf := new(bytes.Buffer)
-	if err := binary.Write(buf, binary.LittleEndian, respData); err != nil {
-		return nil, fmt.Errorf("failed to serialize response data: %w", err)
+	if err := binary.Write(buf, binary.LittleEndian, header); err != nil {
+		return nil, fmt.Errorf("failed to serialize header: %w", err)
+	}
+	if err := binary.Write(buf, binary.LittleEndian, kernelResp); err != nil {
+		return nil, fmt.Errorf("failed to serialize kernel response: %w", err)
 	}
 
-	// Append strings
-	buf.Write([]byte(keyID))
-	buf.Write([]byte(reason))
-	buf.Write([]byte(policyName))
-
-	return SerializeResponse(seq, TAKAKRYPT_OP_CHECK_POLICY, TAKAKRYPT_STATUS_SUCCESS, buf.Bytes())
+	return buf.Bytes(), nil
 }
 
 // SerializeResponse creates a binary response message

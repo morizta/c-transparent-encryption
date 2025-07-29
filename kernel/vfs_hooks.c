@@ -154,12 +154,27 @@ int takakrypt_check_policy(struct file *file, uint32_t operation)
     takakrypt_global_state->stats.cache_misses++;
     spin_unlock(&takakrypt_global_state->stats_lock);
     
-    /* For now, allow all operations (agent communication will be implemented) */
-    takakrypt_debug("Agent communication not yet implemented, allowing operation\n");
-    ret = 0;
+    /* Query user-space agent via netlink */
+    takakrypt_info("POLICY_CHECK: Sending policy request to agent for %s\n", filepath);
     
-    /* Cache the decision (temporarily allowing all) */
-    takakrypt_cache_insert(filepath, ctx.uid, ctx.pid, 1, "default", "default-key");
+    struct takakrypt_policy_response response;
+    ret = takakrypt_send_policy_request(&ctx, &response, sizeof(response));
+    if (ret == 0) {
+        takakrypt_info("POLICY_CHECK: Agent response: allow=%u, reason='%s'\n", 
+                       response.allow, response.reason);
+        
+        /* Cache the decision from agent */
+        takakrypt_cache_insert(filepath, ctx.uid, ctx.pid, response.allow, 
+                              response.policy_name, response.key_id);
+        
+        ret = response.allow ? 0 : -EACCES;
+    } else {
+        takakrypt_error("POLICY_CHECK: Failed to get agent response: %d, defaulting to DENY\n", ret);
+        
+        /* Cache failed decision as deny */
+        takakrypt_cache_insert(filepath, ctx.uid, ctx.pid, 0, "error", "no-key");
+        ret = -EACCES;
+    }
 
 update_stats:
     /* Update statistics */

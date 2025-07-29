@@ -134,6 +134,12 @@ int takakrypt_should_intercept_file(struct file *file)
         return 0;
     }
     
+    /* TEMPORARY BYPASS: Test hardcoded guard point */
+    if (strstr(filepath, "/tmp/takakrypt-user-test") != NULL) {
+        takakrypt_info("BYPASS: File %s matches hardcoded guard point /tmp/takakrypt-user-test\n", filepath);
+        should_intercept = 1;
+    }
+    
     /* Check against configured guard points */
     mutex_lock(&takakrypt_global_state->guard_points_lock);
     

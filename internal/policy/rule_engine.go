@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"path/filepath" 
 	"sort"
 	"strings"
 	
@@ -211,27 +212,88 @@ func matchesUserSet(ctx *RuleEvaluationContext, set *config.UserSet) bool {
 
 // matchesProcessSet checks if process context matches a process set
 func matchesProcessSet(ctx *RuleEvaluationContext, set *config.ProcessSet) bool {
-	// Check process names
-	for _, proc := range set.Processes {
-		if ctx.ProcessName == proc {
+	// Use the sophisticated process matching from process package
+	// This includes pattern matching, wildcards, and substring matching
+	
+	// Create a ProcessInfo-like structure for compatibility
+	processInfo := &ProcessInfo{
+		PID:  ctx.ProcessID,
+		Name: ctx.ProcessName,
+		Path: ctx.ProcessPath,
+	}
+	
+	// Check process names with pattern matching
+	for _, processName := range set.Processes {
+		if matchesProcessName(processInfo, processName) {
 			return true
 		}
 	}
 	
-	// Check process paths
-	for _, path := range set.ProcessPaths {
-		if ctx.ProcessPath == path {
+	// Check process paths with pattern matching  
+	for _, processPath := range set.ProcessPaths {
+		if matchesProcessPath(processInfo, processPath) {
 			return true
 		}
 	}
 	
-	// Check PIDs
+	// Check PIDs (exact match)
 	for _, pid := range set.PIDs {
 		if ctx.ProcessID == pid {
 			return true
 		}
 	}
 	
+	// Empty set matches all processes
+	if len(set.Processes) == 0 && len(set.ProcessPaths) == 0 && len(set.PIDs) == 0 {
+		return true
+	}
+	
+	return false
+}
+
+
+// matchesProcessName checks if process name matches pattern (from process/sets.go)
+func matchesProcessName(processInfo *ProcessInfo, pattern string) bool {
+	// Exact match
+	if processInfo.Name == pattern {
+		return true
+	}
+
+	// Wildcard match
+	if matched, _ := filepath.Match(pattern, processInfo.Name); matched {
+		return true
+	}
+
+	// Substring match
+	if strings.Contains(processInfo.Name, pattern) {
+		return true
+	}
+
+	return false
+}
+
+// matchesProcessPath checks if process path matches pattern (from process/sets.go)
+func matchesProcessPath(processInfo *ProcessInfo, pattern string) bool {
+	// Exact match
+	if processInfo.Path == pattern {
+		return true
+	}
+
+	// Wildcard match
+	if matched, _ := filepath.Match(pattern, processInfo.Path); matched {
+		return true
+	}
+
+	// Prefix match (common for paths)
+	if strings.HasPrefix(processInfo.Path, pattern) {
+		return true
+	}
+
+	// Directory match
+	if strings.HasPrefix(processInfo.Path, filepath.Dir(pattern)) {
+		return true
+	}
+
 	return false
 }
 
