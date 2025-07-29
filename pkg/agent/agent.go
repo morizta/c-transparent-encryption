@@ -447,7 +447,7 @@ func (w *Worker) processRequests() error {
 		"worker_id": w.id,
 		"operation": msg.Header.Operation,
 		"sequence":  msg.Header.Sequence,
-		"data_len":  msg.Header.DataLen,
+		"data_len":  msg.Header.PayloadSize,
 	}).Debug("Received netlink message")
 
 	// Process the message using the request handler

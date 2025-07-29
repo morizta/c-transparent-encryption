@@ -114,4 +114,23 @@ func (c *Client) SendStatusRequest() (*Message, error) {
 		Data:      []byte("status_ok"),
 		Timestamp: time.Now(),
 	}, nil
-}// Enhanced logging enabled
+}
+
+// GuardPointConfig represents guard point configuration for kernel (mock)
+type GuardPointConfig struct {
+	Name     string
+	Path     string
+	Enabled  bool
+}
+
+// SendConfigUpdate sends guard point configuration to kernel module (mock)
+func (c *Client) SendConfigUpdate(guardPoints []GuardPointConfig) error {
+	fmt.Printf("[MOCK] Config update: %d guard points\n", len(guardPoints))
+	for i, gp := range guardPoints {
+		fmt.Printf("[MOCK] Guard point %d: name='%s', path='%s', enabled=%v\n", 
+			i+1, gp.Name, gp.Path, gp.Enabled)
+	}
+	return nil
+}
+
+// Enhanced logging enabled

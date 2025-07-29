@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"time"
+	"unsafe"
 )
 
 // TakakryptMessage represents the binary protocol for kernel-userspace communication
@@ -12,15 +14,15 @@ type TakakryptMessage struct {
 	Data   []byte
 }
 
-// TakakryptHeader is the fixed-size header for all messages
+// TakakryptHeader matches the kernel's takakrypt_msg_header structure exactly
 type TakakryptHeader struct {
-	Magic     uint32 // "TAKA" magic number (0x54414B41)
-	Version   uint16 // Protocol version
-	Operation uint16 // Operation type
-	Sequence  uint32 // Request/response sequence
-	DataLen   uint32 // Length of data following header
-	Status    uint32 // Status code (for responses)
-	Reserved  [8]byte // Reserved for future use
+	Magic       uint32    // Magic number for validation
+	Version     uint32    // Protocol version  
+	Operation   uint32    // Operation type
+	Sequence    uint32    // Sequence number
+	PayloadSize uint32    // Size of payload data (same as DataLen)
+	Flags       uint32    // Request flags (same as Status for responses)
+	Timestamp   uint64    // Request timestamp
 }
 
 const (
@@ -104,12 +106,13 @@ func SerializeEncryptionRequest(seq uint32, keyID string, data []byte) ([]byte, 
 
 	// Create header
 	header := TakakryptHeader{
-		Magic:     TAKAKRYPT_MSG_MAGIC,
-		Version:   TAKAKRYPT_PROTOCOL_VERSION,
-		Operation: TAKAKRYPT_OP_ENCRYPT,
-		Sequence:  seq,
-		DataLen:   uint32(dataLen),
-		Status:    0,
+		Magic:       TAKAKRYPT_MSG_MAGIC,
+		Version:     TAKAKRYPT_PROTOCOL_VERSION,
+		Operation:   TAKAKRYPT_OP_ENCRYPT,
+		Sequence:    seq,
+		PayloadSize: uint32(dataLen),
+		Flags:       0,
+		Timestamp:   uint64(time.Now().Unix()),
 	}
 
 	// Serialize header
@@ -148,12 +151,13 @@ func SerializeDecryptionRequest(seq uint32, keyID string, encryptedData []byte) 
 
 	// Create header
 	header := TakakryptHeader{
-		Magic:     TAKAKRYPT_MSG_MAGIC,
-		Version:   TAKAKRYPT_PROTOCOL_VERSION,
-		Operation: TAKAKRYPT_OP_DECRYPT,
-		Sequence:  seq,
-		DataLen:   uint32(dataLen),
-		Status:    0,
+		Magic:       TAKAKRYPT_MSG_MAGIC,
+		Version:     TAKAKRYPT_PROTOCOL_VERSION,
+		Operation:   TAKAKRYPT_OP_DECRYPT,
+		Sequence:    seq,
+		PayloadSize: uint32(dataLen),
+		Flags:       0,
+		Timestamp:   uint64(time.Now().Unix()),
 	}
 
 	// Serialize header
@@ -189,12 +193,13 @@ func SerializePolicyCheckRequest(seq uint32, path string, operation, uid, gid, p
 
 	// Create header
 	header := TakakryptHeader{
-		Magic:     TAKAKRYPT_MSG_MAGIC,
-		Version:   TAKAKRYPT_PROTOCOL_VERSION,
-		Operation: TAKAKRYPT_OP_CHECK_POLICY,
-		Sequence:  seq,
-		DataLen:   uint32(dataLen),
-		Status:    0,
+		Magic:       TAKAKRYPT_MSG_MAGIC,
+		Version:     TAKAKRYPT_PROTOCOL_VERSION,
+		Operation:   TAKAKRYPT_OP_CHECK_POLICY,
+		Sequence:    seq,
+		PayloadSize: uint32(dataLen),
+		Flags:       0,
+		Timestamp:   uint64(time.Now().Unix()),
 	}
 
 	// Serialize header
@@ -241,12 +246,12 @@ func DeserializeMessage(data []byte) (*TakakryptMessage, error) {
 	if header.Version != TAKAKRYPT_PROTOCOL_VERSION {
 		return nil, fmt.Errorf("unsupported version: %d", header.Version)
 	}
-	if header.DataLen > MAX_MESSAGE_SIZE-TAKAKRYPT_HEADER_SIZE {
-		return nil, fmt.Errorf("data length too large: %d", header.DataLen)
+	if header.PayloadSize > MAX_MESSAGE_SIZE-TAKAKRYPT_HEADER_SIZE {
+		return nil, fmt.Errorf("payload size too large: %d", header.PayloadSize)
 	}
 
 	// Extract data portion
-	expectedLen := TAKAKRYPT_HEADER_SIZE + int(header.DataLen)
+	expectedLen := TAKAKRYPT_HEADER_SIZE + int(header.PayloadSize)
 	if len(data) < expectedLen {
 		return nil, fmt.Errorf("incomplete message: %d < %d", len(data), expectedLen)
 	}
@@ -387,14 +392,18 @@ func SerializePolicyCheckResponse(seq uint32, allowAccess, encryptFile bool, key
 	copy(kernelResp.KeyID[:], keyID) 
 	copy(kernelResp.Reason[:], reason)
 
+	// Calculate actual payload size for PolicyCheckResponseKernel struct
+	kernelRespSize := uint32(unsafe.Sizeof(PolicyCheckResponseKernel{}))
+	
 	// Create header for kernel format (matching takakrypt_msg_header)
 	header := TakakryptHeader{
-		Magic:     TAKAKRYPT_MSG_MAGIC,
-		Version:   TAKAKRYPT_PROTOCOL_VERSION,
-		Operation: TAKAKRYPT_OP_CHECK_POLICY,
-		Sequence:  seq,
-		DataLen:   uint32(24 + 64 + 64 + 256), // status+allow+request_id + policy_name + key_id + reason
-		Status:    TAKAKRYPT_STATUS_SUCCESS,
+		Magic:       TAKAKRYPT_MSG_MAGIC,
+		Version:     TAKAKRYPT_PROTOCOL_VERSION,
+		Operation:   TAKAKRYPT_OP_CHECK_POLICY,
+		Sequence:    seq,
+		PayloadSize: kernelRespSize,
+		Flags:       TAKAKRYPT_STATUS_SUCCESS,
+		Timestamp:   uint64(time.Now().Unix()),
 	}
 
 	// Serialize header + response
@@ -410,19 +419,20 @@ func SerializePolicyCheckResponse(seq uint32, allowAccess, encryptFile bool, key
 }
 
 // SerializeResponse creates a binary response message
-func SerializeResponse(seq uint32, operation uint16, status uint32, responseData []byte) ([]byte, error) {
+func SerializeResponse(seq uint32, operation uint32, status uint32, responseData []byte) ([]byte, error) {
 	if len(responseData) > MAX_MESSAGE_SIZE-TAKAKRYPT_HEADER_SIZE {
 		return nil, fmt.Errorf("response data too large: %d bytes", len(responseData))
 	}
 
 	// Create header
 	header := TakakryptHeader{
-		Magic:     TAKAKRYPT_MSG_MAGIC,
-		Version:   TAKAKRYPT_PROTOCOL_VERSION,
-		Operation: operation,
-		Sequence:  seq,
-		DataLen:   uint32(len(responseData)),
-		Status:    status,
+		Magic:       TAKAKRYPT_MSG_MAGIC,
+		Version:     TAKAKRYPT_PROTOCOL_VERSION,
+		Operation:   operation,
+		Sequence:    seq,
+		PayloadSize: uint32(len(responseData)),
+		Flags:       status,
+		Timestamp:   uint64(time.Now().Unix()),
 	}
 
 	// Serialize header

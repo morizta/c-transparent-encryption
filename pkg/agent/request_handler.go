@@ -42,7 +42,7 @@ func (h *RequestHandler) ProcessMessage(ctx context.Context, msg *netlink.Takakr
 	logrus.WithFields(logrus.Fields{
 		"operation": msg.Header.Operation,
 		"sequence":  msg.Header.Sequence,
-		"data_len":  msg.Header.DataLen,
+		"data_len":  msg.Header.PayloadSize,
 	}).Info("AGENT_REQUEST: Processing request from kernel")
 	
 	// Update statistics

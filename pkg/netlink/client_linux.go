@@ -3,7 +3,9 @@
 package netlink
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"syscall"
@@ -44,15 +46,15 @@ const (
 	TAKAKRYPT_MAX_MSG_SIZE = 65536
 )
 
-// MessageHeader represents the message header structure
-type MessageHeader struct {
-	Magic       uint32
-	Version     uint32
-	Operation   uint32
-	Sequence    uint32
-	PayloadSize uint32
-	Flags       uint32
-	Timestamp   uint64
+// TakakryptMsgHeader matches the kernel's takakrypt_msg_header structure exactly
+type TakakryptMsgHeader struct {
+	Magic       uint32    // Magic number for validation
+	Version     uint32    // Protocol version  
+	Operation   uint32    // Operation type
+	Sequence    uint32    // Sequence number
+	PayloadSize uint32    // Size of payload data
+	Flags       uint32    // Request flags
+	Timestamp   uint64    // Request timestamp
 }
 
 // NewClient creates a new netlink client
@@ -176,8 +178,8 @@ func (c *Client) SendMessage(msg *Message) error {
 		"data_len":  len(msg.Data),
 	}).Debug("Preparing to send message to kernel")
 
-	// Create message header
-	header := MessageHeader{
+	// Create message header matching kernel structure
+	header := TakakryptMsgHeader{
 		Magic:       TAKAKRYPT_MSG_MAGIC,
 		Version:     TAKAKRYPT_PROTOCOL_VERSION,
 		Operation:   msg.Type,
@@ -281,12 +283,12 @@ func (c *Client) ReceiveMessage(timeout time.Duration) (*Message, error) {
 	payloadStart := syscall.NLMSG_HDRLEN
 	payloadLen := int(nlmsgHdr.Len) - syscall.NLMSG_HDRLEN
 
-	if payloadLen < int(unsafe.Sizeof(MessageHeader{})) {
+	if payloadLen < int(unsafe.Sizeof(TakakryptMsgHeader{})) {
 		return nil, fmt.Errorf("payload too short for message header")
 	}
 
 	// Parse our message header
-	header := (*MessageHeader)(unsafe.Pointer(&buf[payloadStart]))
+	header := (*TakakryptMsgHeader)(unsafe.Pointer(&buf[payloadStart]))
 	
 	// Validate header
 	if header.Magic != TAKAKRYPT_MSG_MAGIC {
@@ -300,7 +302,7 @@ func (c *Client) ReceiveMessage(timeout time.Duration) (*Message, error) {
 	// Extract data payload
 	var data []byte
 	if header.PayloadSize > 0 {
-		dataStart := payloadStart + int(unsafe.Sizeof(MessageHeader{}))
+		dataStart := payloadStart + int(unsafe.Sizeof(TakakryptMsgHeader{}))
 		if dataStart+int(header.PayloadSize) > n {
 			return nil, fmt.Errorf("invalid payload size: %d", header.PayloadSize)
 		}
@@ -512,57 +514,68 @@ type ConfigUpdateData struct {
 
 // SendConfigUpdate sends guard point configuration to kernel module
 func (c *Client) SendConfigUpdate(guardPoints []GuardPointConfig) error {
-	logrus.WithField("guard_points", len(guardPoints)).Debug("Sending configuration update to kernel")
+	logrus.WithField("guard_points", len(guardPoints)).Info("Sending configuration update to kernel")
 	
-	// Serialize guard points to send to kernel
-	// For now, send a simple format: count + (name_len + name + path_len + path + enabled) for each
-	var data []byte
+	// Use proper binary encoding instead of manual byte manipulation
+	buf := new(bytes.Buffer)
 	
-	// Add guard point count (4 bytes)
-	count := make([]byte, 4)
-	for i := 0; i < 4; i++ {
-		count[i] = byte(len(guardPoints) >> (8 * (3 - i)))
+	// Write guard point count (4 bytes, little endian)
+	if err := binary.Write(buf, binary.LittleEndian, uint32(len(guardPoints))); err != nil {
+		return fmt.Errorf("failed to write guard point count: %w", err)
 	}
-	data = append(data, count...)
 	
-	// Add each guard point
+	// Write each guard point
 	for _, gp := range guardPoints {
 		// Name length (4 bytes) + name
-		nameLen := make([]byte, 4)
-		for i := 0; i < 4; i++ {
-			nameLen[i] = byte(len(gp.Name) >> (8 * (3 - i)))
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(gp.Name))); err != nil {
+			return fmt.Errorf("failed to write name length: %w", err)
 		}
-		data = append(data, nameLen...)
-		data = append(data, []byte(gp.Name)...)
+		if _, err := buf.Write([]byte(gp.Name)); err != nil {
+			return fmt.Errorf("failed to write name: %w", err)
+		}
 		
 		// Path length (4 bytes) + path  
-		pathLen := make([]byte, 4)
-		for i := 0; i < 4; i++ {
-			pathLen[i] = byte(len(gp.Path) >> (8 * (3 - i)))
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(gp.Path))); err != nil {
+			return fmt.Errorf("failed to write path length: %w", err)
 		}
-		data = append(data, pathLen...)
-		data = append(data, []byte(gp.Path)...)
+		if _, err := buf.Write([]byte(gp.Path)); err != nil {
+			return fmt.Errorf("failed to write path: %w", err)
+		}
 		
 		// Enabled flag (1 byte)
+		enabled := uint8(0)
 		if gp.Enabled {
-			data = append(data, 1)
-		} else {
-			data = append(data, 0)
+			enabled = 1
 		}
+		if err := binary.Write(buf, binary.LittleEndian, enabled); err != nil {
+			return fmt.Errorf("failed to write enabled flag: %w", err)
+		}
+		
+		logrus.WithFields(logrus.Fields{
+			"name":    gp.Name,
+			"path":    gp.Path,
+			"enabled": gp.Enabled,
+		}).Debug("Serialized guard point")
 	}
 	
 	msg := &Message{
 		Type:      TAKAKRYPT_OP_SET_CONFIG,
 		Sequence:  c.getNextSequence(),
-		Data:      data,
+		Data:      buf.Bytes(),
 		Timestamp: time.Now(),
 	}
+	
+	logrus.WithFields(logrus.Fields{
+		"operation": msg.Type,
+		"sequence":  msg.Sequence,
+		"size":      len(msg.Data),
+	}).Info("NETLINK_CONFIG: Sending guard point configuration to kernel")
 	
 	if err := c.SendMessage(msg); err != nil {
 		return fmt.Errorf("failed to send config update: %w", err)
 	}
 	
-	logrus.Info("Configuration sent to kernel module successfully")
+	logrus.WithField("guard_points", len(guardPoints)).Info("Guard point configuration sent to kernel successfully")
 	return nil
 }
 
