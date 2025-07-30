@@ -10,6 +10,7 @@ extern int takakrypt_install_file_hooks(struct file *file);
 /* Kprobe handlers for VFS interception */
 static struct kprobe kp_vfs_read;
 static struct kprobe kp_vfs_write;
+static struct kprobe kp_do_filp_open;
 static bool kprobes_installed = false;
 
 /**
@@ -20,8 +21,7 @@ static int pre_vfs_read(struct kprobe *p, struct pt_regs *regs)
     struct file *file;
     char filepath[TAKAKRYPT_MAX_PATH_LEN];
     
-    /* Always log that kprobe was triggered */
-    takakrypt_info("KPROBE: vfs_read intercepted\n");
+    /* Removed unconditional logging to prevent infinite recursion */
     
     /* Get file parameter from registers (first argument) */
 #ifdef CONFIG_X86_64
@@ -48,11 +48,10 @@ static int pre_vfs_read(struct kprobe *p, struct pt_regs *regs)
         takakrypt_global_state->stats.requests_processed++;
         spin_unlock(&takakrypt_global_state->stats_lock);
         
-        /* Check policy */
-        takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_READ);
+        /* Policy checks handled at VFS hook level - no need for kprobe policy checks */
+        /* takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_READ); */
         
-        /* Install VFS hooks for this file */
-        takakrypt_install_file_hooks(file);
+        /* VFS hooks are installed at file open time, not during read operations */
     }
     
     return 0;
@@ -66,8 +65,7 @@ static int pre_vfs_write(struct kprobe *p, struct pt_regs *regs)
     struct file *file;
     char filepath[TAKAKRYPT_MAX_PATH_LEN];
     
-    /* Always log that kprobe was triggered */
-    takakrypt_info("KPROBE: vfs_write intercepted\n");
+    /* Removed unconditional logging to prevent infinite recursion */
     
     /* Get file parameter from registers (first argument) */
 #ifdef CONFIG_X86_64
@@ -94,14 +92,42 @@ static int pre_vfs_write(struct kprobe *p, struct pt_regs *regs)
         takakrypt_global_state->stats.requests_processed++;
         spin_unlock(&takakrypt_global_state->stats_lock);
         
-        /* Check policy */
-        takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_WRITE);
+        /* Policy checks handled at VFS hook level - no need for kprobe policy checks */
+        /* takakrypt_check_policy(file, TAKAKRYPT_FILE_OP_WRITE); */
         
-        /* Install VFS hooks for this file */
-        takakrypt_install_file_hooks(file);
+        /* VFS hooks are installed at file open time, not during write operations */
     }
     
     return 0;
+}
+
+/**
+ * Post-handler for do_filp_open - Install VFS hooks when files are opened
+ */
+static void post_do_filp_open(struct kprobe *p, struct pt_regs *regs, unsigned long flags)
+{
+    struct file *file;
+    char filepath[TAKAKRYPT_MAX_PATH_LEN];
+    
+    /* Get return value (struct file *) from rax register */
+#ifdef CONFIG_X86_64
+    file = (struct file *)regs_return_value(regs);
+#else
+    file = (struct file *)regs->ARM_r0;
+#endif
+    
+    /* Check if file open was successful and should be intercepted */
+    if (IS_ERR_OR_NULL(file) || !takakrypt_should_intercept_file(file)) {
+        return;
+    }
+    
+    /* Get file path for logging */
+    if (takakrypt_get_file_path(file, filepath, sizeof(filepath)) == 0) {
+        takakrypt_info("KPROBE: File opened in guard point: %s\n", filepath);
+        
+        /* Install VFS hooks for this file early */
+        takakrypt_install_file_hooks(file);
+    }
 }
 
 /**
@@ -135,8 +161,8 @@ int takakrypt_should_intercept_file(struct file *file)
     }
     
     /* TEMPORARY BYPASS: Test hardcoded guard point */
-    if (strstr(filepath, "/tmp/takakrypt-user-test") != NULL) {
-        takakrypt_info("BYPASS: File %s matches hardcoded guard point /tmp/takakrypt-user-test\n", filepath);
+    if (strstr(filepath, "/tmp/test-encrypt") != NULL) {
+        takakrypt_info("BYPASS: File %s matches hardcoded guard point /tmp/test-encrypt\n", filepath);
         should_intercept = 1;
     }
     
@@ -202,25 +228,39 @@ int takakrypt_install_global_hooks(void)
         takakrypt_info("Registered vfs_read kprobe successfully\n");
     }
     
-    /* Try vfs_write first, fallback to new_sync_write */
+    /* Try vfs_write first (traditional path), fallback to vfs_iter_write */
     kp_vfs_write.symbol_name = "vfs_write";
     kp_vfs_write.pre_handler = pre_vfs_write;
     
     ret = register_kprobe(&kp_vfs_write);
     if (ret < 0) {
-        takakrypt_warn("Failed to register vfs_write kprobe: %d, trying new_sync_write\n", ret);
+        takakrypt_warn("Failed to register vfs_write kprobe: %d, trying vfs_iter_write\n", ret);
         /* Try alternative function */
-        kp_vfs_write.symbol_name = "new_sync_write";
+        kp_vfs_write.symbol_name = "vfs_iter_write";
         ret = register_kprobe(&kp_vfs_write);
         if (ret < 0) {
-            takakrypt_error("Failed to register new_sync_write kprobe: %d\n", ret);
+            takakrypt_error("Failed to register vfs_iter_write kprobe: %d\n", ret);
             unregister_kprobe(&kp_vfs_read);
             return ret;
         } else {
-            takakrypt_info("Registered new_sync_write kprobe successfully\n");
+            takakrypt_info("Registered vfs_iter_write kprobe successfully\n");
         }
     } else {
         takakrypt_info("Registered vfs_write kprobe successfully\n");
+    }
+    
+    /* Register do_filp_open kprobe for early VFS hook installation */
+    kp_do_filp_open.symbol_name = "do_filp_open";
+    kp_do_filp_open.post_handler = post_do_filp_open;
+    
+    ret = register_kprobe(&kp_do_filp_open);
+    if (ret < 0) {
+        takakrypt_error("Failed to register do_filp_open kprobe: %d\n", ret);
+        unregister_kprobe(&kp_vfs_read);
+        unregister_kprobe(&kp_vfs_write);
+        return ret;
+    } else {
+        takakrypt_info("Registered do_filp_open kprobe successfully\n");
     }
     
     kprobes_installed = true;
@@ -242,6 +282,7 @@ void takakrypt_remove_global_hooks(void)
     
     unregister_kprobe(&kp_vfs_read);
     unregister_kprobe(&kp_vfs_write);
+    unregister_kprobe(&kp_do_filp_open);
     
     kprobes_installed = false;
     takakrypt_info("Global VFS hooks removed\n");

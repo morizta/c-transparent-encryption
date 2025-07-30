@@ -246,8 +246,8 @@ void takakrypt_netlink_recv(struct sk_buff *skb)
         return;
     }
     
-    /* Update agent PID if this is the first message */
-    if (takakrypt_global_state->agent_pid == 0) {
+    /* Update agent PID for any new connection */
+    if (takakrypt_global_state->agent_pid != pid) {
         takakrypt_global_state->agent_pid = pid;
         takakrypt_global_state->stats.agent_connected = 1;
         takakrypt_info("User-space agent connected (PID: %u)\n", pid);
