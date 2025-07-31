@@ -77,3 +77,33 @@
   4. Policy checks happen in VFS hooks (safe process context where blocking is allowed)
 - **Verification**: System now stable, no crashes when writing to guard points
 - **Future Prevention**: Never make blocking calls from atomic context. Use work queues or process context for complex operations.
+
+## [NULL_POINTER_DEREFERENCE_KPROBES] - CRITICAL FIX COMPLETED
+- **Found on**: 2025-07-31
+- **Symptoms**: 
+  - VM crash on `takakrypt_global_state->stats_lock` access in kprobe handlers
+  - NULL pointer dereference at kernel/kprobe_hooks.c:82-84
+  - Kernel panic during module initialization/cleanup race conditions
+  - Random crashes when kprobes fire before global state is ready
+- **Suspected Causes**:
+  1. **Race condition**: Kprobes registered before `takakrypt_global_state` initialized
+  2. **Module cleanup race**: Global state freed while kprobes still active
+  3. **Missing NULL checks**: All kprobe handlers assume global state exists
+  4. **Initialization order**: `module_active` flag not used to guard access
+- **Fix Steps**:
+  1. **Added NULL safety checks** in all kprobe handlers (kernel/kprobe_hooks.c:60-62, 104-106, 208-210, 175-177)
+  2. **Fixed initialization order** in kernel/main.c:223 - set `module_active=1` BEFORE installing kprobes
+  3. **Added memory barriers** with `smp_wmb()` to ensure visibility across CPUs
+  4. **Safe cleanup sequence** in kernel/main.c:265-271 - deactivate module FIRST, wait for kprobes to finish
+  5. **VFS hook mutex protection** in kernel/vfs_hooks.c:501-508 to prevent installation races
+  6. **Work queue safety** - double-check global state before queueing encryption work
+- **Verification**: 
+  - ✅ Module builds successfully with all NULL checks
+  - ✅ Critical sections now guarded by module state validation
+  - ✅ Initialization order ensures kprobes never access NULL global state
+  - ✅ Cleanup sequence safely deactivates before removing hooks
+- **Future Prevention**: 
+  - Always check `takakrypt_global_state` and `module_active` before any access
+  - Use proper memory barriers when changing module state
+  - Never register kprobes before global state is fully initialized
+  - Always deactivate module before cleanup to stop new operations

@@ -73,7 +73,8 @@ static int takakrypt_init_state(void)
     
     /* Initialize atomic variables */
     atomic_set(&takakrypt_global_state->sequence_counter, 1);
-    atomic_set(&takakrypt_global_state->module_active, 1);
+    /* NOTE: module_active will be set to 1 AFTER full initialization */
+    atomic_set(&takakrypt_global_state->module_active, 0);
     
     /* Initialize statistics */
     memset(&takakrypt_global_state->stats, 0, sizeof(struct takakrypt_status_info));
@@ -219,7 +220,13 @@ static int __init takakrypt_init_module(void)
         goto cleanup_proc;
     }
     
-    /* Install global kprobe hooks */
+    /* CRITICAL: Mark module as active BEFORE installing kprobes */
+    atomic_set(&takakrypt_global_state->module_active, 1);
+    
+    /* Add memory barrier to ensure global state is visible */
+    smp_wmb();
+    
+    /* Install global kprobe hooks - ONLY AFTER global state is ready */
     ret = takakrypt_install_global_hooks();
     if (ret) {
         takakrypt_warn("Failed to install global hooks: %d\n", ret);
@@ -254,11 +261,20 @@ static void __exit takakrypt_cleanup_module(void)
 {
     takakrypt_info("Unloading Takakrypt Transparent Encryption Module\n");
     
+    /* CRITICAL: Mark module as inactive FIRST to stop kprobe processing */
+    if (takakrypt_global_state) {
+        atomic_set(&takakrypt_global_state->module_active, 0);
+        /* Memory barrier to ensure all CPUs see the change */
+        smp_wmb();
+        /* Give time for any ongoing kprobe handlers to complete */
+        msleep(100);
+    }
+    
+    /* Remove global hooks FIRST */
+    takakrypt_remove_global_hooks();
+    
     /* Remove VFS hooks */
     takakrypt_remove_hooks();
-    
-    /* Remove global hooks */
-    takakrypt_remove_global_hooks();
     
     /* Cleanup proc interface */
     takakrypt_proc_cleanup();

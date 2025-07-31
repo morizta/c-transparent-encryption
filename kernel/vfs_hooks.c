@@ -237,6 +237,15 @@ ssize_t takakrypt_read_iter(struct kiocb *iocb, struct iov_iter *iter)
     char *buffer = NULL;
     size_t count = iov_iter_count(iter);
     
+    /* CRITICAL: Check module state first */
+    if (!takakrypt_global_state || !atomic_read(&takakrypt_global_state->module_active)) {
+        /* Module is shutting down - call original function if available */
+        if (original_file_ops && original_file_ops->read_iter) {
+            return original_file_ops->read_iter(iocb, iter);
+        }
+        return -ENOSYS;
+    }
+    
     takakrypt_debug("Read_iter hook called: count=%zu, pos=%lld\n", count, iocb->ki_pos);
     
     /* Check policy for file read */
@@ -494,15 +503,26 @@ static int takakrypt_should_intercept(struct file *file)
  * takakrypt_install_file_hooks - Install hooks for specific file
  * @file: File to hook
  * 
- * Replaces file operations with our hooked versions for transparent encryption
+ * SAFELY replaces file operations with our hooked versions for transparent encryption
  */
 int takakrypt_install_file_hooks(struct file *file)
 {
+    static DEFINE_MUTEX(hook_install_mutex);
+    int ret = 0;
+    
+    /* CRITICAL: Check module state */
+    if (!takakrypt_global_state || !atomic_read(&takakrypt_global_state->module_active)) {
+        return 0;
+    }
+    
     if (!takakrypt_should_intercept(file)) {
         return 0;
     }
     
     takakrypt_debug("Installing VFS hooks for file\n");
+    
+    /* CRITICAL: Use mutex to prevent race conditions during hook installation */
+    mutex_lock(&hook_install_mutex);
     
     /* Save original file operations if not already saved */
     if (!original_file_ops && file->f_op) {
@@ -520,11 +540,16 @@ int takakrypt_install_file_hooks(struct file *file)
         takakrypt_info("VFS hooks initialized with original operations\n");
     }
     
-    /* Replace file operations atomically */
-    if (original_file_ops) {
+    /* SAFELY replace file operations with proper synchronization */
+    if (original_file_ops && takakrypt_global_state && 
+        atomic_read(&takakrypt_global_state->module_active)) {
+        /* Use atomic pointer update for safety */
+        smp_wmb(); /* Ensure hooked_fops is fully initialized */
         file->f_op = &takakrypt_hooked_fops;
         takakrypt_debug("File operations replaced with hooked versions\n");
     }
+    
+    mutex_unlock(&hook_install_mutex);
     
     return 0;
 }
